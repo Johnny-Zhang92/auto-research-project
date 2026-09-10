@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-mode.local/schemas/0.4.0-alpha.4/provenance-record.schema.json",
+  "title": "Controller provenance record 0.4.0-alpha.4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "artifact", "artifact_sha256", "phase", "run_id", "created_at", "generator", "prompt_sha256", "skills", "inputs"],
+  "properties": {
+    "schema_version": {"const": "0.4.0-alpha.4"},
+    "artifact": {"type": "string", "minLength": 1},
+    "artifact_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "phase": {"type": "string", "minLength": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "created_at": {"type": "string"},
+    "generator": {"type": "object"},
+    "prompt_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "skills": {"type": "array"},
+    "inputs": {"type": "array"}
+  }
+}

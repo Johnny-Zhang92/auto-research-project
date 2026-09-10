@@ -1,0 +1,148 @@
+{
+  "name": "computational-research",
+  "version": "0.4.0-alpha.4",
+  "initial": "framing",
+  "max_attempts_per_phase": 2,
+  "max_summary_chars": 2000,
+  "max_checks": 20,
+  "terminal_states": ["done", "blocked", "terminated"],
+  "phases": {
+    "framing": {
+      "agent": "research-worker",
+      "skills": ["scientific-brainstorming", "personal-research-planning"],
+      "purpose": "Turn the goal into a bounded research contract. Separate facts, assumptions, unknowns, exclusions, budget and stop conditions.",
+      "inputs": ["RESEARCH_GOAL.md"],
+      "required_files": ["research/research-contract.md", "research/research-contract.json"],
+      "validator": "research_contract",
+      "timeout_seconds": 1800,
+      "next": "evidence"
+    },
+    "evidence": {
+      "agent": "research-worker",
+      "repair_agent": "research-repairer",
+      "repairable": true,
+      "repair_policy": "evidence-ledger",
+      "skills": ["paper-lookup", "scientific-critical-thinking"],
+      "purpose": "Build a replayable claim-evidence ledger using bounded scholarly retrieval where relevant. Record exact databases, parameters, raw query snapshots and hashes, persistent source identifiers, count reconciliation, contradictions and unresolved items.",
+      "runtime_tools": [".research/runtime/paper-lookup/paginate.py", ".research/runtime/paper-lookup/arxiv_atom.py", ".research/runtime/paper-lookup/jats_to_text.py", ".research/runtime/paper-lookup/openalex_abstract.py"],
+      "inputs": ["research/research-contract.json"],
+      "required_files": ["research/evidence-ledger.md", "research/evidence-ledger.json"],
+      "validator": "evidence_ledger",
+      "timeout_seconds": 1800,
+      "next": "hypotheses"
+    },
+    "hypotheses": {
+      "agent": "research-worker",
+      "repair_agent": "research-repairer",
+      "repairable": true,
+      "repair_policy": "hypothesis-references",
+      "revision_agent": "research-reviser",
+      "revisionable": true,
+      "revision_policy": "grounded-hypotheses",
+      "skills": ["hypothesis-generation", "scientific-brainstorming"],
+      "purpose": "Create falsifiable null and alternative hypotheses, rival explanations, predictions and measurements grounded in the evidence ledger.",
+      "inputs": ["research/research-contract.json", "research/evidence-ledger.json"],
+      "required_files": ["research/hypothesis-ledger.md", "research/hypothesis-ledger.json"],
+      "validator": "hypothesis_ledger",
+      "timeout_seconds": 1800,
+      "next": "experiment-plan"
+    },
+    "experiment-plan": {
+      "agent": "research-worker",
+      "repair_agent": "research-repairer",
+      "repairable": true,
+      "repair_policy": "experiment-plan",
+      "skills": ["personal-research-planning", "hypothesis-generation", "experimental-design", "statistical-analysis"],
+      "purpose": "Pre-register representative tasks or data, unit of analysis, replication unit, assignment, randomization, blocking, leakage controls, metrics, variables, analysis, budget and stop conditions. Explicitly reject pseudoreplication and design-analysis mismatch. Do not implement or run experiments.",
+      "inputs": ["research/research-contract.json", "research/evidence-ledger.json", "research/hypothesis-ledger.json"],
+      "required_files": ["research/experiment-plan.md", "research/experiment-plan.json"],
+      "validator": "experiment_plan",
+      "timeout_seconds": 2400,
+      "next": "plan-approval"
+    },
+    "plan-approval": {
+      "type": "human_gate",
+      "prompt": "Review the research question, task coverage, metrics, budget, risks and stop conditions.",
+      "inputs": ["research/research-contract.json", "research/evidence-ledger.json", "research/hypothesis-ledger.json", "research/experiment-plan.json"],
+      "approved_next": "implementation",
+      "rejected_next": "experiment-plan"
+    },
+    "implementation": {
+      "agent": "research-builder",
+      "skills": ["personal-experiment-runner"],
+      "purpose": "Implement only the approved experiment, deterministic graders, an explicit trial manifest and the single-trial v0.4 entrypoint ABI. LocalExecutor owns ordering, retries and aggregation; do not start measured sessions.",
+      "inputs": ["research/experiment-plan.json", ".research/approvals/plan-approval.json"],
+      "required_files": ["research/implementation-note.md", "configs/execution-manifest.json", "scripts/execute-approved.py"],
+      "validator": "implementation",
+      "timeout_seconds": 3600,
+      "next": "smoke-test"
+    },
+    "smoke-test": {
+      "agent": "research-builder",
+      "skills": ["personal-experiment-runner", "personal-experiment-diagnosis"],
+      "purpose": "Run only cheap preflight and ABI checks. Verify trial IDs, deterministic graders, result validation, environment lineage, timeout and cost accounting without starting formal measured trials.",
+      "inputs": ["research/experiment-plan.json", "configs/execution-manifest.json", "scripts/execute-approved.py"],
+      "required_files": ["runs/smoke-test/report.md", "runs/smoke-test/result.json"],
+      "validator": "smoke_result",
+      "timeout_seconds": 3600,
+      "next": "execution-approval"
+    },
+    "execution-approval": {
+      "type": "human_gate",
+      "freeze": true,
+      "prompt": "Review generated trials, graders, declared environment inputs and variable names, smoke results, exact session count and projected budget. Approval records the observed environment and freezes executable inputs.",
+      "inputs": ["research/experiment-plan.json", "configs/execution-manifest.json", "scripts/execute-approved.py", "runs/smoke-test/result.json"],
+      "approved_next": "formal-experiment",
+      "rejected_next": "implementation"
+    },
+    "formal-experiment": {
+      "agent": "research-executor",
+      "skills": ["personal-experiment-runner", "personal-experiment-diagnosis"],
+      "purpose": "Resume the frozen trial set through LocalExecutor within approved cost, time and retry limits. Preserve every attempt, raw result, checkpoint, failure class and budget update.",
+      "inputs": ["research/experiment-plan.json", "configs/execution-manifest.json", ".research/frozen-manifest.json", ".research/execution-authorization.json", ".research/environment-lock.json"],
+      "required_files": ["runs/formal-experiment/report.md", "runs/formal-experiment/result.json"],
+      "validator": "formal_result",
+      "verify_freeze": true,
+      "timeout_from_budget": true,
+      "next": "analysis"
+    },
+    "analysis": {
+      "agent": "research-worker",
+      "skills": ["statistical-analysis", "scientific-critical-thinking"],
+      "purpose": "Analyze frozen results against preregistered metrics. Emphasize paired effect sizes, uncertainty, task coverage and practical tradeoffs; preserve null and negative results.",
+      "inputs": ["research/experiment-plan.json", "runs/formal-experiment/result.json"],
+      "required_files": ["research/result-analysis.md", "research/result-analysis.json"],
+      "validator": "analysis_result",
+      "timeout_seconds": 2400,
+      "next": "critique"
+    },
+    "critique": {
+      "agent": "research-critic",
+      "skills": ["scientific-critical-thinking"],
+      "purpose": "Independently challenge validity, coverage, leakage, confounding, missingness and overclaiming without changing experiment artifacts. This is an internal project audit, not journal peer review; do not load peer-review without a separate authorized intake.",
+      "inputs": ["research/evidence-ledger.json", "research/experiment-plan.json", "research/result-analysis.json"],
+      "required_files": ["research/critical-review.md"],
+      "timeout_seconds": 1800,
+      "next": "decision"
+    },
+    "decision": {
+      "agent": "research-worker",
+      "skills": ["scientific-critical-thinking"],
+      "purpose": "Issue one auditable outcome and choose iteration, report, blocked or terminated using preregistered stop conditions and the critique.",
+      "inputs": ["research/hypothesis-ledger.json", "research/result-analysis.json", "research/critical-review.md"],
+      "required_files": ["research/decision.md", "research/decision.json"],
+      "validator": "decision",
+      "timeout_seconds": 1200,
+      "allowed_next": ["hypotheses", "report", "blocked", "terminated"]
+    },
+    "report": {
+      "agent": "research-worker",
+      "skills": ["scientific-writing"],
+      "purpose": "Write a concise traceable report whose claims bind to evidence and experiment artifacts, with limitations and the independent critique retained.",
+      "inputs": ["research/evidence-ledger.json", "research/result-analysis.json", "research/critical-review.md", "research/decision.json"],
+      "required_files": ["report/final-report.md"],
+      "timeout_seconds": 1800,
+      "next": "done"
+    }
+  }
+}

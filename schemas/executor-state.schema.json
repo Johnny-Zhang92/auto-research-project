@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-mode.local/schemas/0.4.0-alpha.4/executor-state.schema.json",
+  "title": "LocalExecutor checkpoint 0.4.0-alpha.4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "execution_id", "manifest_sha256", "status", "created_at", "updated_at", "sessions_started", "cost_usd", "wall_seconds", "interruptions", "trials"],
+  "properties": {
+    "schema_version": {"const": "0.4.0-alpha.4"},
+    "execution_id": {"type": "string"},
+    "manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "status": {"enum": ["ready", "running", "completed", "terminated"]},
+    "created_at": {"type": "string", "minLength": 1},
+    "updated_at": {"type": "string", "minLength": 1},
+    "sessions_started": {"type": "integer", "minimum": 0},
+    "cost_usd": {"type": "number", "minimum": 0},
+    "wall_seconds": {"type": "number", "minimum": 0},
+    "interruptions": {"type": "integer", "minimum": 0},
+    "trials": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["status", "attempts", "attempt_history", "pid", "result_sha256", "result_path", "last_error", "updated_at"],
+        "properties": {
+          "status": {"enum": ["pending", "running", "completed", "failed"]},
+          "attempts": {"type": "integer", "minimum": 0},
+          "attempt_history": {"type": "array"},
+          "pid": {"type": ["integer", "null"]},
+          "result_sha256": {"type": ["string", "null"]},
+          "result_path": {"type": ["string", "null"]},
+          "last_error": {"type": ["string", "null"]},
+          "wall_seconds": {"type": "number", "minimum": 0},
+          "updated_at": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

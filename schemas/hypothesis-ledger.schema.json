@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-mode.local/schemas/0.4.0-alpha.4/hypothesis-ledger.schema.json",
+  "title": "Hypothesis ledger 0.4.0-alpha.4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "research_question", "hypotheses", "measurements"],
+  "properties": {
+    "schema_version": {"const": "0.4.0-alpha.4"},
+    "research_question": {"type": "string", "minLength": 1},
+    "hypotheses": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "null", "alternative", "predictions", "rivals", "falsifier", "evidence_ids"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "null": {"type": "string", "minLength": 1},
+          "alternative": {"type": "string", "minLength": 1},
+          "predictions": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+          "rivals": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+          "falsifier": {"type": "string", "minLength": 1},
+          "evidence_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+        }
+      }
+    },
+    "measurements": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+  }
+}

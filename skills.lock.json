@@ -1,0 +1,68 @@
+{
+  "lock_version": 1,
+  "generated_at": "2026-09-04",
+  "source_repository": "https://github.com/K-Dense-AI/scientific-agent-skills",
+  "source_ref": "v2.66.0",
+  "source_commit": "1e5eeffbdad3749125afe7ab48a39694e27f181c",
+  "skills": [
+    {
+      "name": "hypothesis-generation",
+      "version": "2.2",
+      "path": "skills/hypothesis-generation",
+      "status": "enabled",
+      "tree_sha256": "62ee3be9723f61d25fd6950bbd40fc9b16f434c9aaa1e341e0754b5edf247720"
+    },
+    {
+      "name": "scientific-brainstorming",
+      "version": "1.2",
+      "path": "skills/scientific-brainstorming",
+      "status": "enabled",
+      "tree_sha256": "4478818e2d01c9217fe86809735ba242b2fe6e843be473b726207dded902b3a1"
+    },
+    {
+      "name": "scientific-critical-thinking",
+      "version": "1.3",
+      "path": "skills/scientific-critical-thinking",
+      "status": "enabled",
+      "tree_sha256": "310199b5a5b24ff75726dcb4e117a896d93ba05f1e1afe8ace6957fc3a28f8f5"
+    },
+    {
+      "name": "scientific-writing",
+      "version": "2.1",
+      "path": "skills/scientific-writing",
+      "status": "enabled",
+      "tree_sha256": "352644c2bc34fee4399a95cfbc4266bb8eabceeb3a5d29666f90318d0c9767e0"
+    },
+    {
+      "name": "statistical-analysis",
+      "version": "1.2",
+      "path": "skills/statistical-analysis",
+      "status": "enabled",
+      "tree_sha256": "528f0623284c41d5566324c7ef2ea9451d40f8d8c4ad2b68460eb470df0855b3"
+    },
+    {
+      "name": "paper-lookup",
+      "version": "2.1",
+      "path": "skills/paper-lookup",
+      "status": "enabled",
+      "tree_sha256": "3e13a772c94e742633f926b5611aaec5ee45386915f6a9380fe7df6e0893a87e",
+      "runtime": "network and curl; bundled parsers require Python 3.11+"
+    },
+    {
+      "name": "experimental-design",
+      "version": "1.2",
+      "path": "skills/experimental-design",
+      "status": "enabled",
+      "tree_sha256": "7ebdf2ec4a7c3dffac1aa8e3fc171f10154032a3660327cadd9a4de95ee30bb5",
+      "runtime": "methodology is always available; generators require numpy, pandas and pyDOE3"
+    },
+    {
+      "name": "peer-review",
+      "version": "2.2",
+      "path": "skills/peer-review",
+      "status": "enabled",
+      "tree_sha256": "e3b189ce4a07827fc181b55c72d741e23a577b06fc04ecf61ff1d4b0582abb61",
+      "runtime": "Python 3.11+ standard library; local-only; explicit intake gate required"
+    }
+  ]
+}

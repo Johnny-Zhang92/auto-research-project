@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-mode.local/schemas/0.4.0-alpha.4/smoke-result.schema.json",
+  "title": "Smoke result 0.4.0-alpha.4",
+  "type": "object",
+  "required": ["schema_version", "passed", "checks", "measured_sessions_started", "projected_cost_usd", "projected_wall_seconds"],
+  "properties": {"schema_version": {"const": "0.4.0-alpha.4"}}
+}

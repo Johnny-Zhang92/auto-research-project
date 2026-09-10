@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-mode.local/schemas/0.4.0-alpha.4/analysis-result.schema.json",
+  "title": "Analysis result 0.4.0-alpha.4",
+  "type": "object",
+  "required": ["schema_version", "hypothesis_ids", "primary_metric", "effect_estimate", "uncertainty", "task_coverage", "limitations", "deviations"],
+  "properties": {"schema_version": {"const": "0.4.0-alpha.4"}}
+}

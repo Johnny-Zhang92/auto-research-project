@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-mode.local/schemas/0.4.0-alpha.4/decision.schema.json",
+  "title": "Research decision 0.4.0-alpha.4",
+  "type": "object",
+  "required": ["schema_version", "outcome", "requested_next", "claim_ids", "hypothesis_ids", "trial_ids", "reason"],
+  "properties": {"schema_version": {"const": "0.4.0-alpha.4"}}
+}

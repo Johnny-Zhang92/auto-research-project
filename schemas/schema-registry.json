@@ -1,0 +1,19 @@
+{
+  "schema_version": "0.4.0-alpha.4",
+  "artifacts": {
+    "research/research-contract.json": "research-contract.schema.json",
+    "research/evidence-ledger.json": "evidence-ledger.schema.json",
+    "research/hypothesis-ledger.json": "hypothesis-ledger.schema.json",
+    "research/experiment-plan.json": "experiment-plan.schema.json",
+    "configs/execution-manifest.json": "execution-manifest.schema.json",
+    "runs/smoke-test/result.json": "smoke-result.schema.json",
+    "runs/formal-experiment/result.json": "formal-result.schema.json",
+    "research/result-analysis.json": "analysis-result.schema.json",
+    "research/decision.json": "decision.schema.json"
+  },
+  "supporting": {
+    "trial-result": "trial-result.schema.json",
+    "executor-state": "executor-state.schema.json",
+    "environment-lock": "environment-lock.schema.json"
+  }
+}

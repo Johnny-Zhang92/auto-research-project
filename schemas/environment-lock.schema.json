@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-mode.local/schemas/0.4.0-alpha.4/environment-lock.schema.json",
+  "title": "Controller environment lock 0.4.0-alpha.4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "execution_id", "captured_at", "executor", "runtime", "declared_python", "dependency_lock_reason", "pass_env_names", "files"],
+  "properties": {
+    "schema_version": {"const": "0.4.0-alpha.4"},
+    "execution_id": {"type": "string", "minLength": 1},
+    "captured_at": {"type": "string", "minLength": 1},
+    "executor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "protocol_version", "max_parallel", "failure_policy"],
+      "properties": {
+        "type": {"const": "local"},
+        "protocol_version": {"const": "1"},
+        "max_parallel": {"const": 1},
+        "failure_policy": {"enum": ["continue", "fail-fast"]}
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["python_executable", "python_version", "python_implementation", "platform", "machine"],
+      "properties": {
+        "python_executable": {"type": "string", "minLength": 1},
+        "python_version": {"type": "string", "minLength": 1},
+        "python_implementation": {"type": "string", "minLength": 1},
+        "platform": {"type": "string", "minLength": 1},
+        "machine": {"type": "string"}
+      }
+    },
+    "declared_python": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "executable"],
+      "properties": {
+        "version": {"type": "string", "minLength": 1},
+        "executable": {"const": "python3"}
+      }
+    },
+    "dependency_lock_reason": {"type": "string", "minLength": 1},
+    "pass_env_names": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["role", "path", "sha256"],
+        "properties": {
+          "role": {"enum": ["dependency_lock", "code", "data"]},
+          "path": {"type": "string", "minLength": 1},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    }
+  }
+}

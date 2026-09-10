@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-mode.local/schemas/0.4.0-alpha.4/trial-result.schema.json",
+  "title": "LocalExecutor trial result 0.4.0-alpha.4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "execution_id", "trial_id", "idempotency_key", "outcome", "cost_usd", "wall_seconds", "metrics", "artifacts"],
+  "properties": {
+    "schema_version": {"const": "0.4.0-alpha.4"},
+    "execution_id": {"type": "string", "minLength": 1},
+    "trial_id": {"type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"},
+    "idempotency_key": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "outcome": {"enum": ["completed", "failed", "inconclusive"]},
+    "cost_usd": {"type": "number", "minimum": 0},
+    "wall_seconds": {"type": "number", "minimum": 0},
+    "metrics": {"type": "object"},
+    "artifacts": {"type": "array", "items": {"type": "string"}}
+  }
+}

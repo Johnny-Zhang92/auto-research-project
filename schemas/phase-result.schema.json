@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Research phase result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["phase", "status", "summary", "artifacts", "checks", "requested_next", "blocker"],
+  "properties": {
+    "phase": {"type": "string"},
+    "status": {"enum": ["completed", "blocked"]},
+    "summary": {"type": "string", "minLength": 1},
+    "artifacts": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "checks": {"type": "array", "items": {"type": "string"}},
+    "requested_next": {"type": ["string", "null"]},
+    "blocker": {"type": ["string", "null"]}
+  }
+}
+

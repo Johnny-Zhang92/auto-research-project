@@ -1,0 +1,359 @@
+#!/usr/bin/env python3
+"""Offline OpenCode fake used to validate deterministic workflow mechanics."""
+
+import json
+import hashlib
+import os
+import sys
+import time
+from pathlib import Path
+
+
+args = sys.argv[1:]
+project = Path(args[args.index("--dir") + 1])
+prompt = args[-1]
+phase = next(line.split(":", 1)[1].strip() for line in prompt.splitlines() if line.startswith("Current phase:"))
+repair = "Repair mode: true" in prompt
+revision = "Revision mode: true" in prompt
+invalid = os.environ.get("FAKE_INVALID_PHASE") == phase
+evidence_case = os.environ.get("FAKE_EVIDENCE_CASE", "normal")
+hypothesis_case = os.environ.get("FAKE_HYPOTHESIS_CASE", "normal")
+plan_case = os.environ.get("FAKE_PLAN_CASE", "normal")
+delay = float(os.environ.get("FAKE_DELAY", "0"))
+if delay:
+    time.sleep(delay)
+
+
+def write(relative: str, content: str) -> None:
+    target = project / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+
+
+def write_json(relative: str, value: object) -> None:
+    write(relative, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
+
+
+def sha256(relative: str) -> str:
+    return hashlib.sha256((project / relative).read_bytes()).hexdigest()
+
+
+budget = {"max_cost_usd": 1.0, "max_wall_seconds": 300, "max_run_seconds": 60, "max_retries": 1, "max_sessions": int(os.environ.get("FAKE_CONTRACT_MAX_SESSIONS", "16"))}
+next_phase = {
+    "framing": "evidence",
+    "evidence": "hypotheses",
+    "hypotheses": "experiment-plan",
+    "experiment-plan": "plan-approval",
+    "implementation": "smoke-test",
+    "smoke-test": "execution-approval",
+    "formal-experiment": "analysis",
+    "analysis": "critique",
+    "critique": "decision",
+    "decision": "report",
+    "report": "done",
+}[phase]
+artifacts: list[str] = []
+
+if phase == "framing":
+    artifacts = ["research/research-contract.md", "research/research-contract.json"]
+    write(artifacts[0], "# Contract\n")
+    write_json(artifacts[1], {
+        "schema_version": "0.4.0-alpha.4",
+        "research_question": "offline test",
+        "scope": {"included": "test"},
+        "known_facts": ["one"],
+        "assumptions": ["one"],
+        "unknowns": ["one"],
+        "exclusions": ["one"],
+        "budget": budget,
+        "stop_conditions": ["budget reached"],
+    })
+elif phase == "evidence":
+    artifacts = ["research/evidence-ledger.md", "research/evidence-ledger.json"]
+    write(artifacts[0], "# Evidence\n")
+    snapshot_path = "research/evidence/snapshots/Q1.json"
+    write_json(snapshot_path, {"backend": "fixture", "results": [{"id": "local:test", "title": "Offline evidence"}]})
+    query_status = "failed" if evidence_case == "inaccessible" else "completed"
+    result_count = 0 if evidence_case == "inaccessible" else 1
+    evidence = [{
+        "id": "E1", "claim_ids": ["C1"],
+        "source": {"url": "local:test", "persistent_id": "local:test", "title": "Offline evidence"},
+        "retrieval_query_id": "Q1", "accessed_at": "2026-09-04",
+        "stance": "neutral" if evidence_case == "inaccessible" else "supports",
+        "verification_status": "blocked" if evidence_case == "inaccessible" else "verified",
+    }]
+    if evidence_case == "contradictory":
+        evidence.append({
+            "id": "E2", "claim_ids": ["C1"],
+            "source": {"url": "local:counter", "persistent_id": "local:counter", "title": "Counter evidence"},
+            "retrieval_query_id": "Q1", "accessed_at": "2026-09-04", "stance": "contradicts", "verification_status": "verified",
+        })
+    snapshot_hash = sha256(snapshot_path)
+    if evidence_case == "bad-snapshot-hash":
+        snapshot_hash = "0" * 64
+    ledger = {
+        "schema_version": "0.4.0-alpha.4",
+        "queries": [{
+            "id": "Q1", "backend": "fixture", "endpoint": "local:test", "parameters": {"q": "offline"},
+            "executed_at": "2026-09-04T00:00:00Z", "result_count": result_count, "status": query_status,
+            "snapshot": {"path": snapshot_path, "sha256": snapshot_hash},
+        }],
+        "claims": [{"id": "C1", "text": "offline evidence exists"}],
+        "evidence": evidence,
+        "unresolved": ["source unavailable"] if evidence_case == "inaccessible" else [],
+    }
+    if evidence_case == "canary-malformed" and not repair:
+        ledger["claims"][0]["statement"] = ledger["claims"][0].pop("text")
+        ledger["queries"][0]["status"] = "success"
+        ledger["queries"].append({
+            "id": "Q2", "backend": "fixture", "endpoint": "local:error", "parameters": {"q": "failed"},
+            "executed_at": "2026-09-04T00:00:01Z", "result_count": 0, "status": "error", "snapshot": None,
+        })
+        ledger["evidence"][0]["stance"] = "supports_contextual"
+        ledger["evidence"][0]["verification_status"] = "bibliographic-verified"
+        ledger["evidence"].append({
+            "id": "E2", "claim_ids": ["C1"],
+            "source": {"url": "local:error", "persistent_id": "local:error", "title": "Unavailable source"},
+            "retrieval_query_id": "Q2", "accessed_at": "2026-09-04",
+            "stance": "neutral", "verification_status": "text-unverified",
+        })
+    elif evidence_case == "canary-malformed" and repair:
+        ledger = json.loads((project / artifacts[1]).read_text())
+        ledger["claims"][0]["text"] = ledger["claims"][0].pop("statement")
+        status_map = {"success": "completed", "error": "failed"}
+        verification_map = {"bibliographic-verified": "metadata-only", "text-unverified": "unresolved"}
+        for query in ledger["queries"]:
+            query["status"] = status_map.get(query["status"], query["status"])
+            if query["snapshot"] is None:
+                repair_path = f'research/evidence/snapshots/{query["id"]}-repair-failure.json'
+                write_json(repair_path, {"repair_record": True, "original_response_available": False, "query_id": query["id"], "reason": "original failed response unavailable", "results": []})
+                query["snapshot"] = {"path": repair_path, "sha256": sha256(repair_path)}
+        for item in ledger["evidence"]:
+            if item["stance"] == "supports_contextual":
+                item["stance"] = "supports"
+            item["verification_status"] = verification_map.get(item["verification_status"], item["verification_status"])
+        mutation = os.environ.get("FAKE_REPAIR_MUTATION")
+        if mutation == "source":
+            ledger["evidence"][0]["source"]["title"] = "Fabricated replacement title"
+        elif mutation == "snapshot":
+            existing = ledger["queries"][0]["snapshot"]["path"]
+            write_json(existing, {"backend": "fixture", "results": [{"id": "mutated", "title": "Changed raw evidence"}]})
+            ledger["queries"][0]["snapshot"]["sha256"] = sha256(existing)
+        elif mutation == "outside":
+            write("scripts/injected.py", "raise SystemExit('unexpected repair write')\n")
+        if os.environ.get("FAKE_REPAIR_FAIL") == "1":
+            ledger["queries"][0]["status"] = "success"
+    write_json(artifacts[1], ledger)
+elif phase == "hypotheses":
+    artifacts = ["research/hypothesis-ledger.md", "research/hypothesis-ledger.json"]
+    write(artifacts[0], "# Hypotheses\n")
+    ledger = {
+        "schema_version": "0.4.0-alpha.4",
+        "research_question": "offline test",
+        "hypotheses": [{"id": "H1", "null": "no difference", "alternative": "difference", "predictions": ["observable"], "rivals": ["artifact"], "falsifier": "opposite", "evidence_ids": ["E1"]}],
+        "measurements": ["pass"],
+    }
+    if hypothesis_case == "claim-reference" and not repair:
+        ledger["hypotheses"][0]["evidence_ids"] = ["C1"]
+    elif hypothesis_case == "claim-reference" and repair:
+        ledger = json.loads((project / artifacts[1]).read_text())
+        ledger["hypotheses"][0]["evidence_ids"] = ["E1"]
+        if os.environ.get("FAKE_HYPOTHESIS_RECOVERY_MUTATION") == "science":
+            ledger["hypotheses"][0]["alternative"] = "fabricated change"
+    elif hypothesis_case in {"unsupported", "mixed"} and not revision:
+        if hypothesis_case == "mixed":
+            ledger["hypotheses"][0]["evidence_ids"] = ["C1"]
+        ledger["hypotheses"].append({"id": "H2", "null": "unsupported null", "alternative": "unsupported alternative", "predictions": ["unknown"], "rivals": ["unknown"], "falsifier": "unknown", "evidence_ids": []})
+    elif hypothesis_case in {"unsupported", "mixed"} and revision:
+        before = json.loads((project / artifacts[1]).read_text())
+        ledger = before
+        removed = ledger["hypotheses"].pop()
+        changes = []
+        if hypothesis_case == "mixed":
+            prior = list(ledger["hypotheses"][0]["evidence_ids"])
+            ledger["hypotheses"][0]["evidence_ids"] = ["E1"]
+            changes.append({"hypothesis_id": "H1", "action": "revised", "reason": "replace Claim ID with its linked Evidence Record ID", "before_evidence_ids": prior, "after_evidence_ids": ["E1"]})
+        mutation = os.environ.get("FAKE_HYPOTHESIS_REVISION_MUTATION")
+        if mutation == "invent-evidence":
+            ledger["hypotheses"][0]["evidence_ids"] = ["E999"]
+        elif mutation == "upstream":
+            upstream = json.loads((project / "research/evidence-ledger.json").read_text())
+            upstream["claims"][0]["text"] = "mutated evidence"
+            write_json("research/evidence-ledger.json", upstream)
+        elif mutation == "outside":
+            write("scripts/injected-revision.py", "raise SystemExit('unexpected revision write')\n")
+        error = next(line for line in prompt.splitlines() if line.startswith("semantic validation failed:"))
+        record = {
+            "schema_version": "0.4.0-alpha.4",
+            "phase": "hypotheses",
+            "mode": "grounded-revision",
+            "validation_error": error,
+            "changes": changes + [{"hypothesis_id": "H2", "action": "removed", "reason": "no Evidence Record supports this candidate", "before_evidence_ids": removed["evidence_ids"], "after_evidence_ids": []}],
+            "evidence_ids_used": ["E1"],
+        }
+        if mutation == "bad-diff":
+            record["changes"][-1]["before_evidence_ids"] = ["E1"]
+        write_json(".research/revision-diff.json", record)
+    write_json(artifacts[1], ledger)
+elif phase == "experiment-plan":
+    artifacts = ["research/experiment-plan.md", "research/experiment-plan.json"]
+    write(artifacts[0], "# Plan\n")
+    tasks = [{"id": f"T{i}", "category": category, "deterministic_grader": True, "hidden_tests": True} for i, category in enumerate(("implement", "debug", "analysis", "review"), 1)]
+    plan = {
+        "schema_version": "0.4.0-alpha.4",
+        "hypothesis_ids": ["H1"],
+        "conditions": ["A", "B"],
+        "tasks": tasks,
+        "metrics": [{"name": "pass", "primary": True}],
+        "repetitions": 1,
+        "design": {
+            "unit_of_analysis": "task-run", "replication_unit": "independent session", "assignment": "paired",
+            "randomization": "seeded order", "blocking": "task", "seeds": [42], "data_split": "hidden tests",
+            "leakage_controls": ["hide graders", "fresh session"],
+        },
+        "budget": budget,
+        "stop_conditions": ["budget reached"],
+        "analysis": {"primary_metric": "pass", "multiplicity": "report all", "missing_data": "count failure", "sensitivity": "paired effects"},
+    }
+    if plan_case in {"canary-malformed", "budget-mismatch"} and not repair:
+        for task in plan["tasks"]:
+            task["task_id"] = task.pop("id")
+        plan["repetitions"] = {"per_cell": 1, "total_trials": 8}
+        if plan_case == "budget-mismatch":
+            plan["budget"]["max_sessions"] = 2
+    elif plan_case in {"canary-malformed", "budget-mismatch"} and repair:
+        plan = json.loads((project / artifacts[1]).read_text())
+        for task in plan["tasks"]:
+            task["id"] = task.pop("task_id")
+        plan["repetitions"] = plan["repetitions"]["per_cell"]
+        mutation = os.environ.get("FAKE_PLAN_REPAIR_MUTATION")
+        if mutation == "science":
+            plan["tasks"][0]["category"] = "fabricated-category"
+        elif mutation == "upstream":
+            upstream = json.loads((project / "research/hypothesis-ledger.json").read_text())
+            upstream["hypotheses"][0]["alternative"] = "mutated upstream"
+            write_json("research/hypothesis-ledger.json", upstream)
+        elif mutation == "outside":
+            write("scripts/injected-plan.py", "raise SystemExit('unexpected repair write')\n")
+        if os.environ.get("FAKE_PLAN_REPAIR_FAIL") == "1":
+            plan["repetitions"] = {"total_trials": 7}
+    elif plan_case == "contract-expansion":
+        plan["budget"]["max_sessions"] = 16
+    write_json(artifacts[1], plan)
+elif phase == "implementation":
+    artifacts = ["research/implementation-note.md", "configs/execution-manifest.json", "scripts/execute-approved.py"]
+    write(artifacts[0], "# Implementation\n")
+    write(artifacts[2], """#!/usr/bin/env python3
+import argparse,json
+from pathlib import Path
+p=argparse.ArgumentParser(); p.add_argument('--trial-spec',required=True); p.add_argument('--result',required=True); a=p.parse_args()
+s=json.load(open(a.trial_spec)); Path(a.result).parent.mkdir(parents=True,exist_ok=True)
+Path(a.result).write_text(json.dumps({"schema_version":"0.4.0-alpha.4","execution_id":s["execution_id"],"trial_id":s["trial_id"],"idempotency_key":s["idempotency_key"],"outcome":"completed","cost_usd":0.01,"wall_seconds":0.01,"metrics":{"pass":1},"artifacts":[]})+"\\n")
+""")
+    write("tasks/T1/task.txt", "frozen task\n")
+    trials = [
+        {"trial_id": f"trial-{i}", "condition": condition, "task_id": f"T{task}", "seed": 42, "parameters": {}}
+        for i, (condition, task) in enumerate(((c, t) for c in ("A", "B") for t in range(1, 5)), 1)
+    ]
+    write_json(artifacts[1], {
+        "schema_version": "0.4.0-alpha.4",
+        "execution_id": "EXEC-OFFLINE-001",
+        "executor": {"type": "local", "protocol_version": "1", "max_parallel": 1, "failure_policy": "continue"},
+        "entrypoint": ["python3", "scripts/execute-approved.py"],
+        "trials": trials,
+        "estimated_sessions": 8,
+        "budget": budget,
+        "frozen_inputs": ["scripts", "configs", "tasks"],
+        "environment": {
+            "python": {"version": f"{sys.version_info.major}.{sys.version_info.minor}", "executable": "python3"},
+            "dependency_lock": {"path": None, "sha256": None, "reason": "stdlib-only fixture"},
+            "code_snapshot": [{"path": "scripts/execute-approved.py", "sha256": sha256("scripts/execute-approved.py")}],
+            "data_artifacts": [{"path": "tasks/T1/task.txt", "sha256": sha256("tasks/T1/task.txt")}],
+            "pass_env": [],
+        },
+    })
+elif phase == "smoke-test":
+    artifacts = ["runs/smoke-test/report.md", "runs/smoke-test/result.json"]
+    write(artifacts[0], "# Smoke test\n")
+    write_json(artifacts[1], {
+        "schema_version": "0.4.0-alpha.4",
+        "passed": True,
+        "checks": ["entrypoint", "grader", "budget"],
+        "measured_sessions_started": 0,
+        "projected_cost_usd": float(os.environ.get("FAKE_PROJECTED_COST", "0.5")),
+        "projected_wall_seconds": 120,
+    })
+elif phase == "formal-experiment":
+    artifacts = ["runs/formal-experiment/report.md", "runs/formal-experiment/result.json"]
+    write(artifacts[0], "# Formal experiment\n")
+    trial_ids = [f"trial-{i}" for i in range(1, 9)]
+    write_json("runs/formal-experiment/executor-state.json", {"schema_version": "0.4.0-alpha.4", "execution_id": "EXEC-OFFLINE-001", "status": "completed", "trials": {trial_id: {"status": "completed"} for trial_id in trial_ids}})
+    write_json(artifacts[1], {
+        "schema_version": "0.4.0-alpha.4",
+        "execution_id": "EXEC-OFFLINE-001",
+        "outcome": "completed",
+        "sessions_started": 8,
+        "sessions_completed": 8,
+        "cost_usd": 0.5,
+        "wall_seconds": 120,
+        "budget_exceeded": False,
+        "trial_ids": trial_ids,
+        "trial_statuses": {trial_id: "completed" for trial_id in trial_ids},
+        "result_hashes": {},
+        "result_files": {},
+        "checkpoint_path": "runs/formal-experiment/executor-state.json",
+    })
+elif phase == "analysis":
+    artifacts = ["research/result-analysis.md", "research/result-analysis.json"]
+    write(artifacts[0], "# Analysis\n")
+    write_json(artifacts[1], {
+        "schema_version": "0.4.0-alpha.4",
+        "hypothesis_ids": ["H1"],
+        "primary_metric": "pass",
+        "effect_estimate": 0.1,
+        "uncertainty": "wide",
+        "task_coverage": 4,
+        "limitations": ["offline fake"],
+        "deviations": [],
+    })
+elif phase == "critique":
+    artifacts = ["research/critical-review.md"]
+    write(artifacts[0], "# Critical review\n")
+elif phase == "decision":
+    artifacts = ["research/decision.md", "research/decision.json"]
+    write(artifacts[0], "# Decision\n")
+    write_json(artifacts[1], {
+        "schema_version": "0.4.0-alpha.4",
+        "outcome": "INCONCLUSIVE",
+        "requested_next": "report",
+        "claim_ids": ["C1"],
+        "hypothesis_ids": ["H1"],
+        "trial_ids": ["trial-1"],
+        "reason": "test only",
+    })
+elif phase == "report":
+    artifacts = ["report/final-report.md"]
+    write(artifacts[0], "# Final report\n")
+
+if invalid:
+    victim = project / artifacts[-1]
+    victim.write_text("{}\n", encoding="utf-8")
+
+repair_blocked = repair and os.environ.get("FAKE_REPAIR_BLOCKED") == "1"
+revision_blocked = revision and os.environ.get("FAKE_REVISION_BLOCKED") == "1"
+if os.environ.get("FAKE_SKIP_PHASE_RESULT") == phase:
+    print(json.dumps({"type": "fake", "phase": phase, "phase_result": "omitted"}))
+    raise SystemExit(0)
+result_artifacts = list(artifacts)
+if os.environ.get("FAKE_INCLUDE_MAILBOX_ARTIFACT") == phase:
+    result_artifacts.append(".research/phase-result.json")
+write_json(".research/phase-result.json", {
+    "phase": phase,
+    "status": "blocked" if repair_blocked or revision_blocked else "completed",
+    "summary": "grounded revision cannot retain a supported hypothesis" if revision_blocked else "repair requires scientific judgment" if repair_blocked else "offline transition test",
+    "artifacts": result_artifacts,
+    "checks": ["fake deterministic check"],
+    "requested_next": next_phase,
+    "blocker": "grounded revision cannot retain a supported hypothesis" if revision_blocked else "repair requires scientific judgment" if repair_blocked else None,
+})
+print(json.dumps({"type": "fake", "phase": phase}))
