@@ -1,0 +1,62 @@
+、修改 snapshot、把外部 file URI 伪装为本地证据，或猜测 persistent ID。恢复仍有严格次数上限。
++
++## 真实验证要求
++
++不要迁移 `fp-summation-canary-a4`。在 alpha.5 新建 `fp-summation-canary-a5`，使用同一研究目标和预算，运行到 `plan-approval` 为止。核对 framing/evidence/hypotheses/experiment-plan 的 primary 与 recovery 次数、本地 source 归一化、hypotheses structural repair/grounded revision、experiment-plan repair、provenance audit 和异常重试。未经人工批准不得进入 implementation。
++
++## 仍未实现
++
++仍只提供本地串行执行；不接入 SSH/Slurm，不安装新依赖，不改变两个审批门，也不与另外两个自动化模式混合。
+diff --git a/VERSION b/VERSION
+index 8fa932f..7958d33 100644
+--- a/VERSION
++++ b/VERSION
+@@ -1 +1 @@
+-0.4.0-alpha.4
++0.4.0-alpha.5
+diff --git a/researchctl.py b/researchctl.py
+index 8ca5502..747140c 100755
+--- a/researchctl.py
++++ b/researchctl.py
+@@ -15,6 +15,7 @@ import subprocess
+ import sys
+ import tempfile
+ import uuid
++from urllib.parse import unquote, urlparse
+ from datetime import datetime, timezone
+ from pathlib import Path
+ from typing import Any, Callable
+@@ -113,6 +114,7 @@ def render_status(project: Path, state: dict[str, Any]) -> None:
+         f"- Status: `{state['status']}`\n"
+         f"- Updated: `{state['updated_at']}`\n"
+         f"- Attempts: `{state.get('attempts', 0)}`\n"
++        f"- Recovery attempts: `{state.get('recovery_attempts', 0)}`\n"
+         f"- Interruptions: `{state.get('interruptions', 0)}`\n"
+         f"- Active run: `{active.get('run_id', 'none')}`\n"
+         f"- Blocker: {state.get('blocker') or 'none'}\n\n"
+@@ -983,7 +985,7 @@ def verify_execution_authorization(project: Path) -> tuple[bool, str]:
+ def phase_json_contract(validator_name: str | None) -> str:
+     contracts = {
+         "research_contract": f"schema_version={VERSION}; research_question, scope, known_facts[], assumptions[], unknowns[], exclusions[], budget{{max_cost_usd,max_wall_seconds,max_run_seconds,max_retries,max_sessions}}, stop_conditions[].",
+-        "evidence_ledger": f'''schema_version={VERSION}; exact top-level keys: schema_version, queries, claims, evidence, unresolved. Query exact keys: id, backend, endpoint, parameters{{}}, executed_at, result_count, status (completed|partial|failed), snapshot{{path,sha256}}; snapshot is mandatory even for failed queries and must point under research/evidence/snapshots/. Claim exact keys: id,text. Evidence exact keys: id,claim_ids[],source{{url,persistent_id,title}},retrieval_query_id,accessed_at,stance (supports|contradicts|neutral|mixed),verification_status (verified|metadata-only|unresolved|blocked). Minimal shape: {{"schema_version":"{VERSION}","queries":[{{"id":"Q1","backend":"...","endpoint":"...","parameters":{{}},"executed_at":"...","result_count":0,"status":"failed","snapshot":{{"path":"research/evidence/snapshots/Q1.json","sha256":"<64 hex>"}}}}],"claims":[{{"id":"C1","text":"..."}}],"evidence":[{{"id":"E1","claim_ids":["C1"],"source":{{"url":"https://...","persistent_id":"...","title":"..."}},"retrieval_query_id":"Q1","accessed_at":"...","stance":"neutral","verification_status":"unresolved"}}],"unresolved":["..."]}}.''',
++        "evidence_ledger": f'''schema_version={VERSION}; exact top-level keys: schema_version, queries, claims, evidence, unresolved. Query exact keys: id, backend, endpoint, parameters{{}}, executed_at, result_count, status (completed|partial|failed), snapshot{{path,sha256}}; snapshot is mandatory even for failed queries and must point under research/evidence/snapshots/. Claim exact keys: id,text. Evidence exact keys: id,claim_ids[],source{{url,persistent_id,title}},retrieval_query_id,accessed_at,stance (supports|contradicts|neutral|mixed),verification_status (verified|metadata-only|unresolved|blocked). For a project-owned local source that is the raw snapshot of its retrieval query, never use file://: set source.url exactly to local:<query.snapshot.path> and source.persistent_id exactly to sha256:<query.snapshot.sha256>; persistent_id must never be null or empty. Minimal shape: {{"schema_version":"{VERSION}","queries":[{{"id":"Q1","backend":"...","endpoint":"...","parameters":{{}},"executed_at":"...","result_count":0,"status":"failed","snapshot":{{"path":"research/evidence/snapshots/Q1.json","sha256":"<64 hex>"}}}}],"claims":[{{"id":"C1","text":"..."}}],"evidence":[{{"id":"E1","claim_ids":["C1"],"source":{{"url":"https://...","persistent_id":"...","title":"..."}},"retrieval_query_id":"Q1","accessed_at":"...","stance":"neutral","verification_status":"unresolved"}}],"unresolved":["..."]}}.''',
+         "hypothesis_ledger": f'''schema_version={VERSION}; exact top-level keys: schema_version, research_question, hypotheses, measurements. hypotheses must contain at least one object. Each hypothesis has exactly: id, null, alternative, predictions, rivals, falsifier, evidence_ids. id is unique. null, alternative and falsifier are non-empty strings. predictions and rivals are non-empty string arrays. evidence_ids is a non-empty unique array containing only Evidence Record IDs from evidence-ledger.evidence[].id (normally E-prefixed); Claim IDs from claims[].id (normally C-prefixed) are forbidden. A candidate without evidence support must remain unresolved and must not be promoted into hypotheses. measurements is a non-empty string array. Minimal shape: {{"schema_version":"{VERSION}","research_question":"...","hypotheses":[{{"id":"H1","null":"...","alternative":"...","predictions":["..."],"rivals":["..."],"falsifier":"...","evidence_ids":["E1"]}}],"measurements":["..."]}}.''',
+         "experiment_plan": f'''schema_version={VERSION}; exact top-level keys: schema_version, hypothesis_ids, conditions, tasks, metrics, repetitions, design, budget, stop_conditions, analysis. hypothesis_ids: unique known IDs. conditions: >=2 unique strings or objects with id. tasks: >=4 across >=3 categories; each task must contain id, category, deterministic_grader=true, hidden_tests=true (additional descriptive task fields are allowed). metrics: each item has name and primary; exactly one primary metric. repetitions: positive integer. design requires unit_of_analysis, replication_unit, assignment, randomization, blocking, seeds[], data_split, leakage_controls[]. budget requires max_cost_usd, max_wall_seconds, max_run_seconds, max_retries, max_sessions and may tighten but never exceed the research contract. The full factorial count len(tasks)*len(conditions)*repetitions must not exceed max_sessions. analysis requires primary_metric, multiplicity, missing_data, sensitivity; primary_metric must match the declared primary metric. Minimal shape: {{"schema_version":"{VERSION}","hypothesis_ids":["H1"],"conditions":["A","B"],"tasks":[{{"id":"T1","category":"implementation","deterministic_grader":true,"hidden_tests":true}},{{"id":"T2","category":"debugging","deterministic_grader":true,"hidden_tests":true}},{{"id":"T3","category":"analysis","deterministic_grader":true,"hidden_tests":true}},{{"id":"T4","category":"review","deterministic_grader":true,"hidden_tests":true}}],"metrics":[{{"name":"pass_rate","primary":true}}],"repetitions":1,"design":{{"unit_of_analysis":"task-condition run","replication_unit":"independent session","assignment":"paired","randomization":"seeded order","blocking":"task","seeds":[42],"data_split":"hidden tests","leakage_controls":["hidden graders"]}},"budget":{{"max_cost_usd":1.0,"max_wall_seconds":600,"max_run_seconds":180,"max_retries":0,"max_sessions":8}},"stop_conditions":["budget reached"],"analysis":{{"primary_metric":"pass_rate","multiplicity":"report all","missing_data":"count failure","sensitivity":"paired effects"}}}}.''',
+         "implementation": f"schema_version={VERSION}; execution_id; executor{{type=local,protocol_version=1,max_parallel=1,failure_policy}}; entrypoint exactly [\"python3\",\"scripts/execute-approved.py\"]; trials[] with trial_id,condition,task_id,seed,parameters; estimated_sessions equals trial count; budget; frozen_inputs[]; environment{{python{{version,executable}},dependency_lock{{path,sha256,reason}},code_snapshot[],data_artifacts[],pass_env[]}}. Entrypoint must accept --trial-spec and --result. Do not start measured sessions.",
+@@ -1073,6 +1075,7 @@ def command_new(args: argparse.Namespace) -> int:
+         "phase": "framing",
+         "status": "ready",
+         "attempts": 0,
++        "recovery_attempts": 0,
+         "interruptions": 0,
+         "model": args.model,
+         "blocker": None,
+@@ -1134,7 +1137,7 @@ def build_repair_prompt(
+     allowed = [item for item in phase.get("required_files", []) if item.endswith(".json")] + [".research/phase-result.json"]
+     policy = phase.get("repair_policy")
+     if policy == "evidence-ledger":
+-        policy_instructions = '''Preserve IDs, query parameters, result counts, claim meaning, source identity, evidence links, access dates and unresolved items. Do not add or remove claims, queries, evidence records or sources. Do not modify existing snapshot files. Map an existing `statement` claim field to `text` without rewriting it. Allowed enum mappings are: query success->completed, error->failed; stance supports_contextual->supports; verification bibliographic-verified->metadata-only, text-unverified->unresolved. For a missing failed-query snapshot, write exactly {"repair_record":true,"original_response_available":false,"query_id":"<query-id>","reason":"<non-empty reason from the existing record or validation error>","results":[]} to research/evidence/snapshots/<query-id>-repair-failure.json; then reference its SHA-256. This record documents missing raw data and is not evidence.'''
++        policy_instructions = '''Preserve IDs, query parameters, result counts, claim meaning, source identity, evidence links, access dates and unresolved items. Do not add or remove claims, queries, evidence records or sources. Do not modify existing snapshot files. Map an existing `statement` claim field to `text` without rewriting it. Allowed enum mappings are: query success->completed, error->failed; stance supports_contextual->supports; verification bibliographic-verified->metadata-only, text-unverified->unresolved. A `file://` source is structurally repairable only when it points exactly to the existing project-owned snapshot bound to that evidence record's retrieval_query_id and that snapshot hash is already valid: normalize source.url to `local:<query.snapshot.path>` and, only when persistent_id is null/empty, set it to `sha256:<query.snapshot.sha256>`. Never normalize an external file, a different local file, or a source whose identity cannot be proven from the ledger. For a missing failed-query snapshot, write exactly {"repair_record":true,"original_response_available":false,"query_id":"<query-id>","reason":"<non-empty reason from the existing record or validation error>","results":[]} to research/evidence/snapshots/<query-id>-repair-failure.json; then reference its SHA-256. This record documents missing raw data and is not evidence.'''
+         extra_allowed = "- research/evidence/snapshots/<query-id>-repair-failure.json only when that query's prior snapshot was null or missing"
+     elif policy == "experiment-plan":
+         policy_instructions = '''Preserve hypothesis IDs, condition identity and order, task identity/order/category/specification, grader requirements, metric definitions, design, budget, stop conditions and analysis meaning. Do not add or remove conditions, tasks, metrics, hypotheses, design commitments, budget limits or stop conditions. You may map task_id to id without rewriting the value. You may replace a repetitions object with a positive integer only when it contains an unambiguous positive per_cell value, or when total_trials exactly equals len(tasks)*len(conditions)*the inferred repetitions; otherwise return blocked. Do not increase max_sessions or weaken any budget, leakage co
