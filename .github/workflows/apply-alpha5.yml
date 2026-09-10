@@ -1,0 +1,43 @@
+name: Apply Research Mode alpha.5 candidate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/apply-alpha5.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply-alpha5:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify and apply alpha.5 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .bootstrap/alpha5.patch.part-* > /tmp/alpha5.patch
+          echo "612f9a0945f886e063151ebbd33e17ef99a53308ddb31c6e4230bc8661066e7e  /tmp/alpha5.patch" | sha256sum -c -
+          test "$(cat VERSION)" = "0.4.0-alpha.4"
+          git apply --check /tmp/alpha5.patch
+          git apply /tmp/alpha5.patch
+          test "$(cat VERSION)" = "0.4.0-alpha.5"
+          git diff --check
+
+      - name: Commit clean alpha.5 source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .bootstrap .github/workflows/apply-alpha5.yml
+          git config user.name "Research Mode Maintainer"
+          git config user.email "35098184+Johnny-Zhang92@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "feat: upgrade Research Mode to v0.4.0-alpha.5 candidate"
+          git push origin HEAD:main
