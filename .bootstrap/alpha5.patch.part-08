@@ -1,0 +1,41 @@
+json"],
++      "inputs": [
++        "research/hypothesis-ledger.json",
++        "research/result-analysis.json",
++        "research/critical-review.md"
++      ],
++      "required_files": [
++        "research/decision.md",
++        "research/decision.json"
++      ],
+       "validator": "decision",
+       "timeout_seconds": 1200,
+-      "allowed_next": ["hypotheses", "report", "blocked", "terminated"]
++      "allowed_next": [
++        "hypotheses",
++        "report",
++        "blocked",
++        "terminated"
++      ]
+     },
+     "report": {
+       "agent": "research-worker",
+-      "skills": ["scientific-writing"],
++      "skills": [
++        "scientific-writing"
++      ],
+       "purpose": "Write a concise traceable report whose claims bind to evidence and experiment artifacts, with limitations and the independent critique retained.",
+-      "inputs": ["research/evidence-ledger.json", "research/result-analysis.json", "research/critical-review.md", "research/decision.json"],
+-      "required_files": ["report/final-report.md"],
++      "inputs": [
++        "research/evidence-ledger.json",
++        "research/result-analysis.json",
++        "research/critical-review.md",
++        "research/decision.json"
++      ],
++      "required_files": [
++        "report/final-report.md"
++      ],
+       "timeout_seconds": 1800,
+       "next": "done"
+     }
