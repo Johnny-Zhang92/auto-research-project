@@ -1,0 +1,199 @@
+0, active_run=None)
++        state["recovery_attempts"] = state.get("recovery_attempts", 0) + 1
++        state.update(phase="blocked", status="blocked", blocker=blocker, active_run=None)
+         event(project, "phase_revision_blocked" if revisioning else "phase_repair_blocked", phase=phase_name, run_id=run_id, blocker=blocker)
+         save_state(project, state)
+         return False
+@@ -1784,7 +1891,7 @@ def execute_phase(project: Path, state: dict[str, Any], workflow: dict[str, Any]
+             raise ValueError("phase modified a declared input")
+         revision_record_path: str | None = None
+         if repairing and repair_before is not None:
+-            validate_repair_boundary(execution_project, phase, repair_before, repair_snapshots)
++            validate_repair_boundary(execution_project, phase, repair_before, repair_snapshots, project)
+             current_workspace = file_snapshot([execution_project], execution_project)
+             changed_paths = {
+                 relative
+@@ -1810,17 +1917,17 @@ def execute_phase(project: Path, state: dict[str, Any], workflow: dict[str, Any]
+         reason = f"revision boundary validation failed: {exc}" if revisioning else f"repair boundary validation failed: {exc}" if repairing else f"input immutability failed: {exc}"
+         capture_invalid_attempt(project, phase_name, phase, run_id, reason, "boundary_violation", source_project=execution_project)
+         cleanup_repair_workspace()
+-        fail_attempt(project, state, workflow, phase_name, run_id, reason, "boundary_violation")
++        fail_attempt(project, state, workflow, phase_name, run_id, reason, "boundary_violation", recovery_kind=recovery_kind)
+         return state["phase"] not in TERMINALS
+     cleanup_repair_workspace()
+     if phase.get("verify_freeze"):
+         frozen, freeze_reason = verify_freeze(project)
+         if not frozen:
+-            fail_attempt(project, state, workflow, phase_name, run_id, freeze_reason)
++            fail_attempt(project, state, workflow, phase_name, run_id, freeze_reason, recovery_kind=recovery_kind)
+             return state["phase"] not in TERMINALS
+         authorized, authorization_reason = verify_execution_authorization(project)
+         if not authorized:
+-            fail_attempt(project, state, workflow, phase_name, run_id, authorization_reason)
++            fail_attempt(project, state, workflow, phase_name, run_id, authorization_reason, recovery_kind=recovery_kind)
+             return state["phase"] not in TERMINALS
+     try:
+         provenance_artifacts = (set(phase.get("required_files", [])) | set(result["artifacts"])) - {".research/phase-result.json"}
+@@ -1839,7 +1946,7 @@ def execute_phase(project: Path, state: dict[str, Any], workflow: dict[str, Any]
+             generator_skills=[] if repairing or revisioning else None,
+         )
+     except (ValueError, OSError, json.JSONDecodeError) as exc:
+-        fail_attempt(project, state, workflow, phase_name, run_id, f"provenance generation failed: {exc}", "provenance_failure")
++        fail_attempt(project, state, workflow, phase_name, run_id, f"provenance generation failed: {exc}", "provenance_failure", recovery_kind=recovery_kind)
+         return state["phase"] not in TERMINALS
+     if repairing:
+         event(project, "phase_repair_completed", phase=phase_name, run_id=run_id, policy=phase.get("repair_policy"))
+@@ -1848,13 +1955,13 @@ def execute_phase(project: Path, state: dict[str, Any], workflow: dict[str, Any]
+     atomic_json(project / ".research" / "results" / f"{stamp}-{phase_name}-{run_id[:8]}.json", result)
+     state["active_run"] = None
+     if result["status"] == "blocked":
+-        state.update(phase="blocked", status="blocked", blocker=result["blocker"], attempts=0)
++        state.update(phase="blocked", status="blocked", blocker=result["blocker"], attempts=0, recovery_attempts=0)
+         event(project, "project_blocked", from_phase=phase_name, run_id=run_id, blocker=result["blocker"])
+         save_state(project, state)
+         return False
+     next_status = "completed" if requested == "done" else requested if requested in {"blocked", "terminated"} else "ready"
+     next_blocker = result["summary"] if requested in {"blocked", "terminated"} else None
+-    state.update(phase=requested, status=next_status, blocker=next_blocker, attempts=0)
++    state.update(phase=requested, status=next_status, blocker=next_blocker, attempts=0, recovery_attempts=0)
+     event(project, "phase_completed", phase=phase_name, run_id=run_id, next=requested, artifacts=result["artifacts"])
+     save_state(project, state)
+     return requested not in TERMINALS
+@@ -1929,7 +2036,7 @@ def approve_gate(project: Path, state: dict[str, Any], phase: dict[str, Any], no
+         "approved_next": phase["approved_next"],
+     }
+     atomic_json(project / ".research" / "approvals" / f"{old}.json", approval)
+-    state.update(phase=phase["approved_next"], status="ready", blocker=None, attempts=0, active_run=None)
++    state.update(phase=phase["approved_next"], status="ready", blocker=None, attempts=0, recovery_attempts=0, active_run=None)
+     event(project, "approval_granted", phase=old, note=note)
+     save_state(project, state)
+ 
+@@ -1956,7 +2063,7 @@ def command_reject(args: argparse.Namespace) -> int:
+         if phase.get("type") != "human_gate":
+             raise SystemExit(f"current phase is not a human gate: {state['phase']}")
+         old = state["phase"]
+-        state.update(phase=phase["rejected_next"], status="ready", blocker=args.note, attempts=0, active_run=None, frozen_manifest_sha256=None)
++        state.update(phase=phase["rejected_next"], status="ready", blocker=args.note, attempts=0, recovery_attempts=0, active_run=None, frozen_manifest_sha256=None)
+         event(project, "approval_rejected", phase=old, note=args.note)
+         save_state(project, state)
+         print(f"rejected: {old} -> {state['phase']}")
+diff --git a/schemas/analysis-result.schema.json b/schemas/analysis-result.schema.json
+index 7111c7a..a31f4b1 100644
+--- a/schemas/analysis-result.schema.json
++++ b/schemas/analysis-result.schema.json
+@@ -1,8 +1,8 @@
+ {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+-  "$id": "https://research-mode.local/schemas/0.4.0-alpha.4/analysis-result.schema.json",
+-  "title": "Analysis result 0.4.0-alpha.4",
++  "$id": "https://research-mode.local/schemas/0.4.0-alpha.5/analysis-result.schema.json",
++  "title": "Analysis result 0.4.0-alpha.5",
+   "type": "object",
+   "required": ["schema_version", "hypothesis_ids", "primary_metric", "effect_estimate", "uncertainty", "task_coverage", "limitations", "deviations"],
+-  "properties": {"schema_version": {"const": "0.4.0-alpha.4"}}
++  "properties": {"schema_version": {"const": "0.4.0-alpha.5"}}
+ }
+diff --git a/schemas/decision.schema.json b/schemas/decision.schema.json
+index 5224ba3..2a492c6 100644
+--- a/schemas/decision.schema.json
++++ b/schemas/decision.schema.json
+@@ -1,8 +1,8 @@
+ {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+-  "$id": "https://research-mode.local/schemas/0.4.0-alpha.4/decision.schema.json",
+-  "title": "Research decision 0.4.0-alpha.4",
++  "$id": "https://research-mode.local/schemas/0.4.0-alpha.5/decision.schema.json",
++  "title": "Research decision 0.4.0-alpha.5",
+   "type": "object",
+   "required": ["schema_version", "outcome", "requested_next", "claim_ids", "hypothesis_ids", "trial_ids", "reason"],
+-  "properties": {"schema_version": {"const": "0.4.0-alpha.4"}}
++  "properties": {"schema_version": {"const": "0.4.0-alpha.5"}}
+ }
+diff --git a/schemas/environment-lock.schema.json b/schemas/environment-lock.schema.json
+index 12c5c99..dbcbd26 100644
+--- a/schemas/environment-lock.schema.json
++++ b/schemas/environment-lock.schema.json
+@@ -1,12 +1,12 @@
+ {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+-  "$id": "https://research-mode.local/schemas/0.4.0-alpha.4/environment-lock.schema.json",
+-  "title": "Controller environment lock 0.4.0-alpha.4",
++  "$id": "https://research-mode.local/schemas/0.4.0-alpha.5/environment-lock.schema.json",
++  "title": "Controller environment lock 0.4.0-alpha.5",
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["schema_version", "execution_id", "captured_at", "executor", "runtime", "declared_python", "dependency_lock_reason", "pass_env_names", "files"],
+   "properties": {
+-    "schema_version": {"const": "0.4.0-alpha.4"},
++    "schema_version": {"const": "0.4.0-alpha.5"},
+     "execution_id": {"type": "string", "minLength": 1},
+     "captured_at": {"type": "string", "minLength": 1},
+     "executor": {
+diff --git a/schemas/evidence-ledger.schema.json b/schemas/evidence-ledger.schema.json
+index bab427a..0e810b8 100644
+--- a/schemas/evidence-ledger.schema.json
++++ b/schemas/evidence-ledger.schema.json
+@@ -1,12 +1,12 @@
+ {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+-  "$id": "https://research-mode.local/schemas/0.4.0-alpha.4/evidence-ledger.schema.json",
+-  "title": "Replayable evidence ledger 0.4.0-alpha.4",
++  "$id": "https://research-mode.local/schemas/0.4.0-alpha.5/evidence-ledger.schema.json",
++  "title": "Replayable evidence ledger 0.4.0-alpha.5",
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["schema_version", "queries", "claims", "evidence", "unresolved"],
+   "properties": {
+-    "schema_version": {"const": "0.4.0-alpha.4"},
++    "schema_version": {"const": "0.4.0-alpha.5"},
+     "queries": {
+       "type": "array",
+       "minItems": 1,
+diff --git a/schemas/execution-manifest.schema.json b/schemas/execution-manifest.schema.json
+index 9238c00..a5721a0 100644
+--- a/schemas/execution-manifest.schema.json
++++ b/schemas/execution-manifest.schema.json
+@@ -1,12 +1,12 @@
+ {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+-  "$id": "https://research-mode.local/schemas/0.4.0-alpha.4/execution-manifest.schema.json",
+-  "title": "Execution manifest 0.4.0-alpha.4",
++  "$id": "https://research-mode.local/schemas/0.4.0-alpha.5/execution-manifest.schema.json",
++  "title": "Execution manifest 0.4.0-alpha.5",
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["schema_version", "execution_id", "executor", "entrypoint", "trials", "estimated_sessions", "budget", "frozen_inputs", "environment"],
+   "properties": {
+-    "schema_version": {"const": "0.4.0-alpha.4"},
++    "schema_version": {"const": "0.4.0-alpha.5"},
+     "execution_id": {"type": "string", "minLength": 1},
+     "executor": {
+       "type": "object",
+diff --git a/schemas/executor-state.schema.json b/schemas/executor-state.schema.json
+index 3aa3f92..8579100 100644
+--- a/schemas/executor-state.schema.json
++++ b/schemas/executor-state.schema.json
+@@ -1,12 +1,12 @@
+ {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+-  "$id": "https://research-mode.local/schemas/0.4.0-alpha.4/executor-state.schema.json",
+-  "title": "LocalExecutor checkpoint 0.4.0-alpha.4",
++  "$id": "https://research-mode.local/schemas/0.4.0-alpha.5/executor-state.schema.json",
++  "title": "LocalExecutor checkpoint 0.4.0-alpha.5",
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["schema_version", "execution_id", "manifest_sha256", "status", "created_at", "updated_at", "sessions_started", "cost_usd", "wall_seconds", "interruptions", "trials"],
+   "properties": {
+-    "schema_version": {"const": "0.4.0-alpha.4"},
++    "schema_version": {"const": "0.4.0-alpha.5"},
+     "execution_id": {"type": "string"},
+     "manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+     "status": {"enum": ["ready", "running", "completed", "terminated"]},
+diff --git a/schemas/experiment-plan.schema.json b/schemas/experiment-plan.schema.json
+index 4628d73..ee3b7eb 100644
+--- a/schemas/experiment-plan.schema.json
++++ b/schemas/experiment-plan.schema.json
+@@ -1,12 +1,12 @@
+ {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+-  "$id": "https://research-mode.local/schemas/0.4.0-alpha.4/exper
