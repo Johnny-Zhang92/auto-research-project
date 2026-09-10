@@ -1,0 +1,148 @@
+et":m["budget"],"execution_manifest_sha256":sha(mp),"environment_lock_sha256":sha(ep),"frozen_manifest_sha256":sha(fp)}
+ (p/".research/execution-authorization.json").write_text(json.dumps(auth))
+ PY
+ if (cd projects/guard-cost-study && python3 .research/runtime/guarded_runner.py); then
+diff --git a/tests/local_executor_recovery_test.sh b/tests/local_executor_recovery_test.sh
+index 2a000a5..6518c42 100755
+--- a/tests/local_executor_recovery_test.sh
++++ b/tests/local_executor_recovery_test.sh
+@@ -19,19 +19,19 @@ from pathlib import Path
+ q=argparse.ArgumentParser(); q.add_argument("--trial-spec",required=True); q.add_argument("--result",required=True); a=q.parse_args()
+ s=json.load(open(a.trial_spec)); marker=Path("runs/formal-experiment/invocations.txt")
+ marker.parent.mkdir(parents=True,exist_ok=True); marker.write_text(marker.read_text()+"x" if marker.exists() else "x")
+-Path(a.result).write_text(json.dumps({"schema_version":"0.4.0-alpha.4","execution_id":s["execution_id"],"trial_id":s["trial_id"],"idempotency_key":s["idempotency_key"],"outcome":"completed","cost_usd":0.1,"wall_seconds":0.01,"metrics":{},"artifacts":[]})+"\n")
++Path(a.result).write_text(json.dumps({"schema_version":"0.4.0-alpha.5","execution_id":s["execution_id"],"trial_id":s["trial_id"],"idempotency_key":s["idempotency_key"],"outcome":"completed","cost_usd":0.1,"wall_seconds":0.01,"metrics":{},"artifacts":[]})+"\n")
+ ''')
+ sha=lambda x:hashlib.sha256(x.read_bytes()).hexdigest()
+ budget={"max_cost_usd":1.0,"max_wall_seconds":30,"max_run_seconds":5,"max_retries":1,"max_sessions":2}
+ trial={"trial_id":"trial-recover","condition":"A","task_id":"T1","seed":7,"parameters":{}}
+-manifest={"schema_version":"0.4.0-alpha.4","execution_id":"EXEC-RECOVER-001","executor":{"type":"local","protocol_version":"1","max_parallel":1,"failure_policy":"continue"},"entrypoint":["python3","scripts/execute-approved.py"],"trials":[trial],"estimated_sessions":1,"budget":budget,"frozen_inputs":["scripts"],"environment":{"python":{"version":f"{sys.version_info.major}.{sys.version_info.minor}","executable":"python3"},"dependency_lock":{"path":None,"sha256":None,"reason":"stdlib-only"},"code_snapshot":[{"path":"scripts/execute-approved.py","sha256":sha(script)}],"data_artifacts":[],"pass_env":[]}}
++manifest={"schema_version":"0.4.0-alpha.5","execution_id":"EXEC-RECOVER-001","executor":{"type":"local","protocol_version":"1","max_parallel":1,"failure_policy":"continue"},"entrypoint":["python3","scripts/execute-approved.py"],"trials":[trial],"estimated_sessions":1,"budget":budget,"frozen_inputs":["scripts"],"environment":{"python":{"version":f"{sys.version_info.major}.{sys.version_info.minor}","executable":"python3"},"dependency_lock":{"path":None,"sha256":None,"reason":"stdlib-only"},"code_snapshot":[{"path":"scripts/execute-approved.py","sha256":sha(script)}],"data_artifacts":[],"pass_env":[]}}
+ mp=p/"configs/execution-manifest.json"; mp.write_text(json.dumps(manifest))
+-env={"schema_version":"0.4.0-alpha.4","execution_id":"EXEC-RECOVER-001","captured_at":"2026-09-06T00:00:00Z","executor":manifest["executor"],"runtime":{"python_executable":sys.executable,"python_version":platform.python_version(),"python_implementation":platform.python_implementation(),"platform":platform.platform(),"machine":platform.machine()},"declared_python":manifest["environment"]["python"],"dependency_lock_reason":"stdlib-only","pass_env_names":[],"files":[{"role":"code","path":"scripts/execute-approved.py","sha256":sha(script)}]}
++env={"schema_version":"0.4.0-alpha.5","execution_id":"EXEC-RECOVER-001","captured_at":"2026-09-06T00:00:00Z","executor":manifest["executor"],"runtime":{"python_executable":sys.executable,"python_version":platform.python_version(),"python_implementation":platform.python_implementation(),"platform":platform.platform(),"machine":platform.machine()},"declared_python":manifest["environment"]["python"],"dependency_lock_reason":"stdlib-only","pass_env_names":[],"files":[{"role":"code","path":"scripts/execute-approved.py","sha256":sha(script)}]}
+ ep=p/".research/environment-lock.json"; ep.write_text(json.dumps(env))
+ fp=p/".research/frozen-manifest.json"; fp.write_text(json.dumps({"files":{"scripts/execute-approved.py":sha(script),"configs/execution-manifest.json":sha(mp)}}))
+-auth={"schema_version":"0.4.0-alpha.4","execution_id":"EXEC-RECOVER-001","budget":budget,"execution_manifest_sha256":sha(mp),"environment_lock_sha256":sha(ep),"frozen_manifest_sha256":sha(fp)}
++auth={"schema_version":"0.4.0-alpha.5","execution_id":"EXEC-RECOVER-001","budget":budget,"execution_manifest_sha256":sha(mp),"environment_lock_sha256":sha(ep),"frozen_manifest_sha256":sha(fp)}
+ (p/".research/execution-authorization.json").write_text(json.dumps(auth))
+-state={"schema_version":"0.4.0-alpha.4","execution_id":"EXEC-RECOVER-001","manifest_sha256":sha(mp),"status":"running","created_at":"2026-09-06T00:00:00Z","updated_at":"2026-09-06T00:00:00Z","sessions_started":1,"cost_usd":0.0,"interruptions":0,"trials":{"trial-recover":{"status":"running","attempts":1,"pid":99999999,"result_sha256":None,"last_error":None,"updated_at":"2026-09-06T00:00:00Z"}}}
++state={"schema_version":"0.4.0-alpha.5","execution_id":"EXEC-RECOVER-001","manifest_sha256":sha(mp),"status":"running","created_at":"2026-09-06T00:00:00Z","updated_at":"2026-09-06T00:00:00Z","sessions_started":1,"cost_usd":0.0,"interruptions":0,"trials":{"trial-recover":{"status":"running","attempts":1,"pid":99999999,"result_sha256":None,"last_error":None,"updated_at":"2026-09-06T00:00:00Z"}}}
+ sp=p/"runs/formal-experiment/executor-state.json"; sp.parent.mkdir(parents=True,exist_ok=True); sp.write_text(json.dumps(state))
+ PY
+ 
+@@ -45,7 +45,7 @@ manifest_hash=hashlib.sha256((p/"configs/execution-manifest.json").read_bytes())
+ trial=manifest["trials"][0]
+ payload=json.dumps({"execution_id":manifest["execution_id"],"manifest_sha256":manifest_hash,"trial":trial},sort_keys=True,separators=(",",":")).encode()
+ key=hashlib.sha256(payload).hexdigest()
+-result={"schema_version":"0.4.0-alpha.4","execution_id":manifest["execution_id"],"trial_id":trial["trial_id"],"idempotency_key":key,"outcome":"completed","cost_usd":0.2,"wall_seconds":0.1,"metrics":{},"artifacts":[]}
++result={"schema_version":"0.4.0-alpha.5","execution_id":manifest["execution_id"],"trial_id":trial["trial_id"],"idempotency_key":key,"outcome":"completed","cost_usd":0.2,"wall_seconds":0.1,"metrics":{},"artifacts":[]}
+ rp=p/"runs/formal-experiment/trials/trial-recover/attempt-1.result.json"
+ rp.parent.mkdir(parents=True,exist_ok=True); rp.write_text(json.dumps(result))
+ PY
+diff --git a/tests/local_executor_test.py b/tests/local_executor_test.py
+index 6c44e65..8362731 100644
+--- a/tests/local_executor_test.py
++++ b/tests/local_executor_test.py
+@@ -60,10 +60,10 @@ Path(a.result).write_text(json.dumps({"invalid": True}))
+ from pathlib import Path
+ p=argparse.ArgumentParser(); p.add_argument("--trial-spec"); p.add_argument("--result"); a=p.parse_args()
+ s=json.load(open(a.trial_spec)); m=Path("count.txt"); count=int(m.read_text())+1 if m.exists() else 1; m.write_text(str(count))
+-if count == 1: time.sleep(1)
++if count == 1: time.sleep(3)
+ else: Path(a.result).write_text(json.dumps({{"schema_version":"{VERSION}","execution_id":s["execution_id"],"trial_id":s["trial_id"],"idempotency_key":s["idempotency_key"],"outcome":"completed","cost_usd":0.1,"wall_seconds":0.01,"metrics":{{}},"artifacts":[]}}))
+ '''
+-        temporary, project, manifest, authorization = self.project(script, max_retries=1, max_run=0.15)
++        temporary, project, manifest, authorization = self.project(script, max_retries=1, max_run=1.5)
+         self.addCleanup(temporary.cleanup)
+         executor = LocalExecutor(project, manifest, authorization, VERSION)
+         result = executor.execute()
+diff --git a/tests/recovery_quota_test.sh b/tests/recovery_quota_test.sh
+new file mode 100755
+index 0000000..392c46a
+--- /dev/null
++++ b/tests/recovery_quota_test.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++test_root="$(mktemp -d)"
++trap 'rm -rf "$test_root"' EXIT
++cp -a "$(cd "$(dirname "$0")/.." && pwd)" "$test_root/research-mode"
++cd "$test_root/research-mode"
++export PATH="$PWD/tests/bin:$PATH"
++export FAKE_EVIDENCE_CASE=local-source-malformed
++export FAKE_SKIP_PHASE_RESULT_ONCE=evidence
++
++python3 researchctl.py new recovery-quota-study --goal "preserve bounded repair after a transient primary failure"
++python3 researchctl.py run recovery-quota-study
++python3 researchctl.py audit recovery-quota-study
++
++python3 - <<'PY'
++import json
++from pathlib import Path
++p=Path("projects/recovery-quota-study")
++s=json.load(open(p/".research/state.json"))
++assert s["phase"] == "plan-approval" and s["status"] == "waiting_approval"
++assert s["attempts"] == 0 and s["recovery_attempts"] == 0
++events=[json.loads(line) for line in (p/".research/events.jsonl").read_text().splitlines()]
++failed=[e for e in events if e["event"] == "phase_failed" and e.get("phase") == "evidence"]
++assert [e["failure_class"] for e in failed] == ["missing_phase_result", "semantic_validation"]
++repairs=[e for e in events if e["event"] == "phase_repair_started" and e.get("phase") == "evidence"]
++assert len(repairs) == 1 and repairs[0]["recovery_attempt"] == 1
++assert any(e["event"] == "phase_repair_completed" and e.get("phase") == "evidence" for e in events)
++ledger=json.load(open(p/"research/evidence-ledger.json"))
++query=ledger["queries"][0]
++source=ledger["evidence"][0]["source"]
++assert source["url"] == f'local:{query["snapshot"]["path"]}'
++assert source["persistent_id"] == f'sha256:{query["snapshot"]["sha256"]}'
++invalid=list((p/".research/invalid/evidence").glob("*/failure.json"))
++assert len(invalid) == 2
++PY
++
++echo "recovery quota test: PASS"
+diff --git a/tests/run_all.sh b/tests/run_all.sh
+index 5d48d0d..e493cb7 100755
+--- a/tests/run_all.sh
++++ b/tests/run_all.sh
+@@ -20,6 +20,7 @@ tests/local_executor_recovery_test.sh
+ tests/approval_budget_test.sh
+ tests/evidence_replay_test.sh
+ tests/evidence_repair_test.sh
++tests/recovery_quota_test.sh
+ tests/experiment_plan_repair_test.sh
+ tests/hypothesis_recovery_test.sh
+ tests/provenance_invalidation_test.sh
+diff --git a/tests/static_policy_test.py b/tests/static_policy_test.py
+index 1e2bb2b..b579e48 100644
+--- a/tests/static_policy_test.py
++++ b/tests/static_policy_test.py
+@@ -103,6 +103,8 @@ class StaticPolicyTests(unittest.TestCase):
+ 
+     def test_phase_repairs_are_networkless_and_bounded(self) -> None:
+         workflow = json.loads((ROOT / "workflow/research-workflow.json").read_text())
++        self.assertEqual(workflow["max_attempts_per_phase"], 2)
++        self.assertEqual(workflow["max_recovery_attempts_per_phase"], 1)
+         for name, policy in (("evidence", "evidence-ledger"), ("hypotheses", "hypothesis-references"), ("experiment-plan", "experiment-plan")):
+             phase = workflow["phases"][name]
+             self.assertTrue(phase["repairable"])
+@@ -114,6 +116,10 @@ class StaticPolicyTests(unittest.TestCase):
+         self.assertIn("skill: deny", repairer)
+         self.assertIn("Do not add or remove claims", (ROOT / "researchctl.py").read_text())
+         self.assertIn("Do not add or remove conditions", (ROOT / "researchctl.py").read_text())
++        controller = (ROOT / "researchctl.py").read_text()
++        self.assertIn("local:<query.snapshot.path>", controller)
++        self.assertIn("sha256:<query.snapshot.sha256>", controller)
++        self.assertIn("recovery_attempts", controller)
+ 
+     def test_hypothesis_revision_is_grounded_and_networkless(self) -> None:
+         phase = json.loads((ROOT / "workflow/research-workflow.json").read_text())["phases"]["hypotheses"]
+diff --git a/workflow/research-workflow.json b/workflow/research-workflow.json
+index 70c4e03..9f3b68e 100644
+--- a/workflow/research-workflow.json
++++ b/workflow/research-workflow.json
+@@ -1,18 +1,31 @@
+ {
+   "name": "computational-research",
+-  "version": "0.4.0-alpha.4",
++  "version": "0.4.0-alpha
