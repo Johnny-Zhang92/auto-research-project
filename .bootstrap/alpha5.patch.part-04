@@ -1,0 +1,215 @@
+iment-plan.schema.json",
+-  "title": "Experiment plan 0.4.0-alpha.4",
++  "$id": "https://research-mode.local/schemas/0.4.0-alpha.5/experiment-plan.schema.json",
++  "title": "Experiment plan 0.4.0-alpha.5",
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["schema_version", "hypothesis_ids", "conditions", "tasks", "metrics", "repetitions", "design", "budget", "stop_conditions", "analysis"],
+   "properties": {
+-    "schema_version": {"const": "0.4.0-alpha.4"},
++    "schema_version": {"const": "0.4.0-alpha.5"},
+     "hypothesis_ids": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+     "conditions": {
+       "type": "array", "minItems": 2,
+diff --git a/schemas/formal-result.schema.json b/schemas/formal-result.schema.json
+index b078c75..6f21bca 100644
+--- a/schemas/formal-result.schema.json
++++ b/schemas/formal-result.schema.json
+@@ -1,12 +1,12 @@
+ {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+-  "$id": "https://research-mode.local/schemas/0.4.0-alpha.4/formal-result.schema.json",
+-  "title": "Formal experiment result 0.4.0-alpha.4",
++  "$id": "https://research-mode.local/schemas/0.4.0-alpha.5/formal-result.schema.json",
++  "title": "Formal experiment result 0.4.0-alpha.5",
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["schema_version", "execution_id", "outcome", "sessions_started", "sessions_completed", "cost_usd", "wall_seconds", "budget_exceeded", "trial_ids", "trial_statuses", "result_hashes", "result_files", "checkpoint_path"],
+   "properties": {
+-    "schema_version": {"const": "0.4.0-alpha.4"},
++    "schema_version": {"const": "0.4.0-alpha.5"},
+     "execution_id": {"type": "string", "minLength": 1},
+     "outcome": {"enum": ["completed", "inconclusive", "blocked", "terminated"]},
+     "sessions_started": {"type": "integer", "minimum": 0},
+diff --git a/schemas/hypothesis-ledger.schema.json b/schemas/hypothesis-ledger.schema.json
+index c18f3ca..2385d5c 100644
+--- a/schemas/hypothesis-ledger.schema.json
++++ b/schemas/hypothesis-ledger.schema.json
+@@ -1,12 +1,12 @@
+ {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+-  "$id": "https://research-mode.local/schemas/0.4.0-alpha.4/hypothesis-ledger.schema.json",
+-  "title": "Hypothesis ledger 0.4.0-alpha.4",
++  "$id": "https://research-mode.local/schemas/0.4.0-alpha.5/hypothesis-ledger.schema.json",
++  "title": "Hypothesis ledger 0.4.0-alpha.5",
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["schema_version", "research_question", "hypotheses", "measurements"],
+   "properties": {
+-    "schema_version": {"const": "0.4.0-alpha.4"},
++    "schema_version": {"const": "0.4.0-alpha.5"},
+     "research_question": {"type": "string", "minLength": 1},
+     "hypotheses": {
+       "type": "array",
+diff --git a/schemas/provenance-record.schema.json b/schemas/provenance-record.schema.json
+index 4ace255..f7ac868 100644
+--- a/schemas/provenance-record.schema.json
++++ b/schemas/provenance-record.schema.json
+@@ -1,12 +1,12 @@
+ {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+-  "$id": "https://research-mode.local/schemas/0.4.0-alpha.4/provenance-record.schema.json",
+-  "title": "Controller provenance record 0.4.0-alpha.4",
++  "$id": "https://research-mode.local/schemas/0.4.0-alpha.5/provenance-record.schema.json",
++  "title": "Controller provenance record 0.4.0-alpha.5",
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["schema_version", "artifact", "artifact_sha256", "phase", "run_id", "created_at", "generator", "prompt_sha256", "skills", "inputs"],
+   "properties": {
+-    "schema_version": {"const": "0.4.0-alpha.4"},
++    "schema_version": {"const": "0.4.0-alpha.5"},
+     "artifact": {"type": "string", "minLength": 1},
+     "artifact_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+     "phase": {"type": "string", "minLength": 1},
+diff --git a/schemas/research-contract.schema.json b/schemas/research-contract.schema.json
+index fbb3ddf..73101dc 100644
+--- a/schemas/research-contract.schema.json
++++ b/schemas/research-contract.schema.json
+@@ -1,11 +1,11 @@
+ {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+-  "$id": "https://research-mode.local/schemas/0.4.0-alpha.4/research-contract.schema.json",
+-  "title": "Research contract 0.4.0-alpha.4",
++  "$id": "https://research-mode.local/schemas/0.4.0-alpha.5/research-contract.schema.json",
++  "title": "Research contract 0.4.0-alpha.5",
+   "type": "object",
+   "required": ["schema_version", "research_question", "scope", "known_facts", "assumptions", "unknowns", "exclusions", "budget", "stop_conditions"],
+   "properties": {
+-    "schema_version": {"const": "0.4.0-alpha.4"},
++    "schema_version": {"const": "0.4.0-alpha.5"},
+     "research_question": {"type": "string", "minLength": 1},
+     "scope": {"type": "object"},
+     "known_facts": {"type": "array", "minItems": 1},
+diff --git a/schemas/schema-registry.json b/schemas/schema-registry.json
+index 59f7367..1b2ccfb 100644
+--- a/schemas/schema-registry.json
++++ b/schemas/schema-registry.json
+@@ -1,5 +1,5 @@
+ {
+-  "schema_version": "0.4.0-alpha.4",
++  "schema_version": "0.4.0-alpha.5",
+   "artifacts": {
+     "research/research-contract.json": "research-contract.schema.json",
+     "research/evidence-ledger.json": "evidence-ledger.schema.json",
+diff --git a/schemas/smoke-result.schema.json b/schemas/smoke-result.schema.json
+index 6a0044d..722eb5a 100644
+--- a/schemas/smoke-result.schema.json
++++ b/schemas/smoke-result.schema.json
+@@ -1,8 +1,8 @@
+ {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+-  "$id": "https://research-mode.local/schemas/0.4.0-alpha.4/smoke-result.schema.json",
+-  "title": "Smoke result 0.4.0-alpha.4",
++  "$id": "https://research-mode.local/schemas/0.4.0-alpha.5/smoke-result.schema.json",
++  "title": "Smoke result 0.4.0-alpha.5",
+   "type": "object",
+   "required": ["schema_version", "passed", "checks", "measured_sessions_started", "projected_cost_usd", "projected_wall_seconds"],
+-  "properties": {"schema_version": {"const": "0.4.0-alpha.4"}}
++  "properties": {"schema_version": {"const": "0.4.0-alpha.5"}}
+ }
+diff --git a/schemas/trial-result.schema.json b/schemas/trial-result.schema.json
+index 5a6003c..eeee6c3 100644
+--- a/schemas/trial-result.schema.json
++++ b/schemas/trial-result.schema.json
+@@ -1,12 +1,12 @@
+ {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+-  "$id": "https://research-mode.local/schemas/0.4.0-alpha.4/trial-result.schema.json",
+-  "title": "LocalExecutor trial result 0.4.0-alpha.4",
++  "$id": "https://research-mode.local/schemas/0.4.0-alpha.5/trial-result.schema.json",
++  "title": "LocalExecutor trial result 0.4.0-alpha.5",
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["schema_version", "execution_id", "trial_id", "idempotency_key", "outcome", "cost_usd", "wall_seconds", "metrics", "artifacts"],
+   "properties": {
+-    "schema_version": {"const": "0.4.0-alpha.4"},
++    "schema_version": {"const": "0.4.0-alpha.5"},
+     "execution_id": {"type": "string", "minLength": 1},
+     "trial_id": {"type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"},
+     "idempotency_key": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+diff --git a/tests/bin/opencode b/tests/bin/opencode
+index edb4254..14a71c2 100755
+--- a/tests/bin/opencode
++++ b/tests/bin/opencode
+@@ -58,7 +58,7 @@ if phase == "framing":
+     artifacts = ["research/research-contract.md", "research/research-contract.json"]
+     write(artifacts[0], "# Contract\n")
+     write_json(artifacts[1], {
+-        "schema_version": "0.4.0-alpha.4",
++        "schema_version": "0.4.0-alpha.5",
+         "research_question": "offline test",
+         "scope": {"included": "test"},
+         "known_facts": ["one"],
+@@ -92,7 +92,7 @@ elif phase == "evidence":
+     if evidence_case == "bad-snapshot-hash":
+         snapshot_hash = "0" * 64
+     ledger = {
+-        "schema_version": "0.4.0-alpha.4",
++        "schema_version": "0.4.0-alpha.5",
+         "queries": [{
+             "id": "Q1", "backend": "fixture", "endpoint": "local:test", "parameters": {"q": "offline"},
+             "executed_at": "2026-09-04T00:00:00Z", "result_count": result_count, "status": query_status,
+@@ -102,7 +102,19 @@ elif phase == "evidence":
+         "evidence": evidence,
+         "unresolved": ["source unavailable"] if evidence_case == "inaccessible" else [],
+     }
+-    if evidence_case == "canary-malformed" and not repair:
++    if evidence_case in {"local-source-malformed", "local-source-external"} and not repair:
++        local_target = (project / snapshot_path).resolve()
++        ledger["evidence"][0]["source"]["url"] = local_target.as_uri() if evidence_case == "local-source-malformed" else "file:///tmp/not-project-owned.json"
++        ledger["evidence"][0]["source"]["persistent_id"] = None
++    if evidence_case in {"local-source-malformed", "local-source-external"} and repair:
++        ledger = json.loads((project / artifacts[1]).read_text())
++        query = ledger["queries"][0]
++        ledger["evidence"][0]["source"]["url"] = f'local:{query["snapshot"]["path"]}'
++        ledger["evidence"][0]["source"]["persistent_id"] = f'sha256:{query["snapshot"]["sha256"]}'
++        mutation = os.environ.get("FAKE_REPAIR_MUTATION")
++        if mutation == "source":
++            ledger["evidence"][0]["source"]["title"] = "Fabricated replacement title"
++    elif evidence_case == "canary-malformed" and not repair:
+         ledger["claims"][0]["statement"] = ledger["claims"][0].pop("text")
+         ledger["queries"][0]["status"] = "success"
+         ledger["queries"].append({
+@@ -148,7 +160,7 @@ elif phase == "hypotheses":
+     artifacts = ["research/hypothesis-ledger.md", "research/hypothesis-ledger.json"]
+     write(artifacts[0], "# Hypotheses\n")
+     ledger = {
+-        "schema_version": "0.4.0-alpha.4",
++        "schema_version": "0.4.0-alpha.5",
+         "research_question": "offline test",
+         "hypotheses": [{"id": "H1", "null": "no difference", "alternative": "difference", "predictions": ["observable"], "rivals": ["artifact"], "falsifier": "opposite", "evidence_ids": ["E1"]}],
+         "measurements": ["pass"],
+@@ -184,7 +196,7 @@ elif phase == "hypotheses":
+             write("scripts/injected-revision.py", "raise SystemExit('unexpected revision write')\n")
+         error = next(line for line in prompt.splitlines() if line.startswith("semantic validation failed:"))
+         record = {
+-            "schema_version": "0.4.0-alpha.4",
++            "schema_version": "0.4.0-alpha.5",
+             "phase": "hypotheses",
+             "mode": "grounded-revision",
+             "validation_error": error,
+@@ -200,7 +212,7 @@ elif phase == "experiment-plan":
+     write(artifacts[0], "# Plan\n")
+     tasks = [{"id": f"T{i}", "category": category, "deterministic_grader": True, "hidden_tests": True} for i, category in enumerate(("implement", "debug", "analysis", "review"), 1)]
+     plan = {
+-        "schema_version": "0.4.0-alpha.4",
++        "schema_version": "0.4.0-alpha.5",
+         "hypothesis_ids": ["H1"],
+         "conditions": ["A", "B"],
+         "tasks": tasks,
+@@ -248,7 +260,7 @@ import argparse,json
+ from pathlib import Path
+ p=argparse.ArgumentParser(); p.add_argument('--trial-spec',required=True); p.add_argument('--result',required=True); a=p.parse_args()
+ s=json.load(open(a.trial_spec)); Path(a.result).parent.mkdir(parents=True,exist_ok=True)
+-Path(a.result).write_text(json.dumps({"schema_version":"0.4.0-alpha.4","execution_id":s["execution_id"],"trial_id":s["trial_id"],"idempotency_key":s["idempotency_key"],"outcome":"completed","cost_usd":0.01,"wall_seconds":0.01,"metrics":{"pass":1},"artifacts":[]})+"\\n")
++Path(a.result).write_text(json.dumps({"schema_version":"0.4.0-alpha.5","execution_id":s["execution_id"],"trial_id":s["trial_id"],"idempotency_key":s["idempotency_key"],"outcome":"completed","cost_usd":0.01,"wall_seconds":0.01,"metric
