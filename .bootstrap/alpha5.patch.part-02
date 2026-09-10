@@ -1,0 +1,208 @@
+ntrol, grader, hidden-test or stopping constraint. Additional descriptive fields inside tasks, metrics, conditions, design, budget and analysis may remain.'''
+@@ -1296,7 +1299,53 @@ def promote_evidence_repair(project: Path, workspace: Path, phase: dict[str, Any
+     promote_repair(project, workspace, phase, before)
+ 
+ 
+-def evidence_repair_fingerprint(data: dict[str, Any]) -> dict[str, Any]:
++def canonical_evidence_source_for_repair(data: dict[str, Any], entry: dict[str, Any], project: Path) -> Any:
++    """Canonicalize only a provably project-owned query snapshot source."""
++    source = entry.get("source")
++    if not isinstance(source, dict):
++        return source
++    normalized = json.loads(json.dumps(source))
++    url = source.get("url")
++    query_id = entry.get("retrieval_query_id")
++    queries = {
++        item.get("id"): item
++        for item in data.get("queries", [])
++        if isinstance(item, dict) and isinstance(item.get("id"), str)
++    }
++    query = queries.get(query_id)
++    snapshot = query.get("snapshot") if isinstance(query, dict) else None
++    if not isinstance(snapshot, dict) or set(snapshot) != {"path", "sha256"}:
++        return normalized
++    snapshot_rel = snapshot.get("path")
++    snapshot_sha = snapshot.get("sha256")
++    if not isinstance(snapshot_rel, str) or not isinstance(snapshot_sha, str):
++        return normalized
++    try:
++        snapshot_path = safe_project_file(project, snapshot_rel, prefix="research/evidence/snapshots/")
++    except (OSError, ValueError, TypeError):
++        return normalized
++    if file_sha256(snapshot_path) != snapshot_sha:
++        return normalized
++    expected_local = f"local:{snapshot_rel}"
++    if isinstance(url, str) and url.startswith("file://"):
++        parsed = urlparse(url)
++        if parsed.scheme != "file" or parsed.netloc not in {"", "localhost"}:
++            return normalized
++        try:
++            file_path = Path(unquote(parsed.path)).resolve()
++            if file_path != snapshot_path.resolve():
++                return normalized
++        except (OSError, ValueError):
++            return normalized
++        normalized["url"] = expected_local
++        if not isinstance(normalized.get("persistent_id"), str) or not normalized["persistent_id"].strip():
++            normalized["persistent_id"] = f"sha256:{snapshot_sha}"
++    elif url == expected_local and (not isinstance(normalized.get("persistent_id"), str) or not normalized["persistent_id"].strip()):
++        normalized["persistent_id"] = f"sha256:{snapshot_sha}"
++    return normalized
++
++
++def evidence_repair_fingerprint(data: dict[str, Any], project: Path) -> dict[str, Any]:
+     """Scientific content that a structural repair is not allowed to change."""
+     claims = [
+         {"id": item.get("id"), "text": item.get("text", item.get("statement"))}
+@@ -1307,7 +1356,13 @@ def evidence_repair_fingerprint(data: dict[str, Any]) -> dict[str, Any]:
+         for item in data.get("queries", []) if isinstance(item, dict)
+     ]
+     evidence = [
+-        {key: item.get(key) for key in ("id", "claim_ids", "source", "retrieval_query_id", "accessed_at")}
++        {
++            "id": item.get("id"),
++            "claim_ids": item.get("claim_ids"),
++            "source": canonical_evidence_source_for_repair(data, item, project),
++            "retrieval_query_id": item.get("retrieval_query_id"),
++            "accessed_at": item.get("accessed_at"),
++        }
+         for item in data.get("evidence", []) if isinstance(item, dict)
+     ]
+     return {"claims": claims, "queries": queries, "evidence": evidence, "unresolved": data.get("unresolved")}
+@@ -1317,9 +1372,10 @@ def validate_evidence_repair(
+     project: Path,
+     before: dict[str, Any],
+     before_snapshots: dict[str, str],
++    source_project: Path,
+ ) -> None:
+     after = load_json(project / "research" / "evidence-ledger.json")
+-    if evidence_repair_fingerprint(after) != evidence_repair_fingerprint(before):
++    if evidence_repair_fingerprint(after, project) != evidence_repair_fingerprint(before, source_project):
+         raise ValueError("repair changed scientific content, record identity or ordering")
+     prior_queries = {item.get("id"): item for item in before.get("queries", []) if isinstance(item, dict)}
+     after_queries = {item.get("id"): item for item in after.get("queries", []) if isinstance(item, dict)}
+@@ -1543,10 +1599,11 @@ def validate_repair_boundary(
+     phase: dict[str, Any],
+     before: dict[str, Any],
+     before_snapshots: dict[str, str],
++    source_project: Path,
+ ) -> None:
+     policy = phase.get("repair_policy")
+     if policy == "evidence-ledger":
+-        validate_evidence_repair(workspace, before, before_snapshots)
++        validate_evidence_repair(workspace, before, before_snapshots, source_project)
+     elif policy == "experiment-plan":
+         validate_experiment_plan_repair(workspace, before)
+     elif policy == "hypothesis-references":
+@@ -1617,11 +1674,35 @@ def fail_attempt(
+     run_id: str,
+     message: str,
+     failure_class: str = "semantic_validation",
++    recovery_kind: str | None = None,
++    recovery_available: bool = False,
+ ) -> None:
+-    state["attempts"] = state.get("attempts", 0) + 1
+     state["active_run"] = None
++    if recovery_kind:
++        state["recovery_attempts"] = state.get("recovery_attempts", 0) + 1
++        event(
++            project,
++            "phase_failed",
++            phase=phase_name,
++            run_id=run_id,
++            attempt=state.get("attempts", 0),
++            recovery_attempt=state["recovery_attempts"],
++            recovery_kind=recovery_kind,
++            failure_class=failure_class,
++            reason=message,
++        )
++        if state["recovery_attempts"] >= workflow.get("max_recovery_attempts_per_phase", 1):
++            state.update(status="blocked", blocker=message, phase="blocked")
++        else:
++            state.update(status="ready", blocker=message)
++        save_state(project, state)
++        return
++
++    state["attempts"] = state.get("attempts", 0) + 1
+     event(project, "phase_failed", phase=phase_name, run_id=run_id, attempt=state["attempts"], failure_class=failure_class, reason=message)
+-    if state["attempts"] >= workflow["max_attempts_per_phase"]:
++    primary_exhausted = state["attempts"] >= workflow["max_attempts_per_phase"]
++    recovery_budget = state.get("recovery_attempts", 0) < workflow.get("max_recovery_attempts_per_phase", 1)
++    if primary_exhausted and not (failure_class == "semantic_validation" and recovery_available and recovery_budget):
+         state.update(status="blocked", blocker=message, phase="blocked")
+     else:
+         state.update(status="ready", blocker=message)
+@@ -1736,45 +1817,71 @@ def execute_phase(project: Path, state: dict[str, Any], workflow: dict[str, Any]
+     state.update(status="running", blocker=None, active_run={"run_id": run_id, "pid": os.getpid(), "phase": phase_name, "started_at": now(), "log": str(log_path.relative_to(project))})
+     save_state(project, state)
+     event_name = "phase_revision_started" if revisioning else "phase_repair_started" if repairing else "phase_started"
+-    event(project, event_name, phase=phase_name, run_id=run_id, attempt=state.get("attempts", 0) + 1, agent=selected_agent, model=state.get("model"))
++    event(
++        project,
++        event_name,
++        phase=phase_name,
++        run_id=run_id,
++        attempt=state.get("attempts", 0) + (0 if repairing or revisioning else 1),
++        recovery_attempt=state.get("recovery_attempts", 0) + 1 if repairing or revisioning else None,
++        agent=selected_agent,
++        model=state.get("model"),
++    )
+     try:
+         with log_path.open("w", encoding="utf-8") as log:
+             completed = subprocess.run(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, text=True, check=False, timeout=phase_timeout(project, phase))
+     except subprocess.TimeoutExpired:
+         capture_invalid_attempt(project, phase_name, phase, run_id, "phase timed out", "timeout", source_project=execution_project)
+         cleanup_repair_workspace()
+-        fail_attempt(project, state, workflow, phase_name, run_id, f"phase timed out; see {log_path.relative_to(project)}", "timeout")
++        fail_attempt(project, state, workflow, phase_name, run_id, f"phase timed out; see {log_path.relative_to(project)}", "timeout", recovery_kind=recovery_kind)
+         return state["phase"] not in TERMINALS
+     if completed.returncode != 0:
+         capture_invalid_attempt(project, phase_name, phase, run_id, f"OpenCode exited {completed.returncode}", "process_exit", source_project=execution_project)
+         cleanup_repair_workspace()
+-        fail_attempt(project, state, workflow, phase_name, run_id, f"OpenCode exited {completed.returncode}; see {log_path.relative_to(project)}", "process_exit")
++        fail_attempt(project, state, workflow, phase_name, run_id, f"OpenCode exited {completed.returncode}; see {log_path.relative_to(project)}", "process_exit", recovery_kind=recovery_kind)
+         return state["phase"] not in TERMINALS
+     if not result_path.is_file():
+         capture_invalid_attempt(project, phase_name, phase, run_id, "OpenCode did not create .research/phase-result.json", "missing_phase_result", source_project=execution_project)
+         cleanup_repair_workspace()
+-        fail_attempt(project, state, workflow, phase_name, run_id, "OpenCode did not create .research/phase-result.json", "missing_phase_result")
++        fail_attempt(project, state, workflow, phase_name, run_id, "OpenCode did not create .research/phase-result.json", "missing_phase_result", recovery_kind=recovery_kind)
+         return state["phase"] not in TERMINALS
+     try:
+         result = load_json(result_path)
+     except Exception as exc:
+         capture_invalid_attempt(project, phase_name, phase, run_id, f"invalid phase result JSON: {exc}", "invalid_phase_result", source_project=execution_project)
+         cleanup_repair_workspace()
+-        fail_attempt(project, state, workflow, phase_name, run_id, f"invalid phase result JSON: {exc}", "invalid_phase_result")
++        fail_attempt(project, state, workflow, phase_name, run_id, f"invalid phase result JSON: {exc}", "invalid_phase_result", recovery_kind=recovery_kind)
+         return state["phase"] not in TERMINALS
+     valid, reason, requested = validate_result(execution_project, workflow, phase_name, phase, result)
+     if not valid:
+         failure_class = "semantic_validation" if reason.startswith("semantic validation failed:") else "invalid_phase_result"
+         capture_invalid_attempt(project, phase_name, phase, run_id, reason, failure_class, source_project=execution_project)
+         cleanup_repair_workspace()
+-        fail_attempt(project, state, workflow, phase_name, run_id, reason, failure_class)
++        recovery_available = False
++        if failure_class == "semantic_validation" and not (repairing or revisioning):
++            if phase_name == "hypotheses":
++                recovery_available = hypothesis_recovery_kind(project, phase) is not None
++            elif phase.get("repairable"):
++                recovery_available = True
++        fail_attempt(
++            project,
++            state,
++            workflow,
++            phase_name,
++            run_id,
++            reason,
++            failure_class,
++            recovery_kind=recovery_kind,
++            recovery_available=recovery_available,
++        )
+         return state["phase"] not in TERMINALS
+     if (repairing or revisioning) and result["status"] == "blocked":
+         blocker = str(result["blocker"])
+         recovery_label = "revision" if revisioning else "repair"
+         capture_invalid_attempt(project, phase_name, phase, run_id, f"{recovery_label} agent blocked: {blocker}", "semantic_validation", source_project=execution_project)
+         cleanup_repair_workspace()
+-        state.update(phase="blocked", status="blocked", blocker=blocker, attempts=
