@@ -1,0 +1,152 @@
+diff --git a/技术路线规划.md b/技术路线规划.md
+index d8aa29f..acfe602 100644
+--- a/技术路线规划.md
++++ b/技术路线规划.md
+@@ -1,6 +1,6 @@
+ # OpenCode 自动科研系统技术路线规划
+ 
+-> 文档状态：2026-09-09；当前工程版本：v0.4.0-alpha.4。本文只规划“科研模式”，不与任务调研汇报模式、自主实现模式混合。
++> 文档状态：2026-09-10；当前工程版本：v0.4.0-alpha.5。本文只规划“科研模式”，不与任务调研汇报模式、自主实现模式混合。
+ 
+ ## 1. 总体判断
+ 
+@@ -290,10 +290,10 @@ v0.4 后续实现资源 lease、执行事件和受限 `SlurmExecutor`。验收
+ 
+ ## 9. 下一步工程决策
+ 
+-当前处于 **v0.4.0-alpha.4“本地可恢复执行内核 + 分层阶段恢复”**。alpha.3 的真实 Canary 证明 evidence 可通过，但 hypotheses 出现两类本质不同的失败：Claim ID 混入 Evidence ID 是可证明等价的引用错误，空 `evidence_ids` 则是科学支持不足。alpha.4 因此不再把所有错误都交给同一种 repair，而是建立“结构修复 / 受证据约束修订 / 诚实阻塞”三分法。暂不扩展树搜索。下一步按证据推进：
++当前处于 **v0.4.0-alpha.5“本地可恢复执行内核 + 分层阶段恢复额度”**。alpha.3 的真实 Canary 证明 evidence 可通过，但 hypotheses 出现两类本质不同的失败：Claim ID 混入 Evidence ID 是可证明等价的引用错误，空 `evidence_ids` 则是科学支持不足。alpha.4 因此不再把所有错误都交给同一种 repair，而是建立“结构修复 / 受证据约束修订 / 诚实阻塞”三分法。暂不扩展树搜索。下一步按证据推进：
+ 
+ 1. 保留 `fp-summation-canary-a2` 与 `fp-summation-canary-a3` 的 blocked 状态作为真实失败夹具，不人工复位或修改产物；
+-2. 在 alpha.4 新建同目标 Canary，预算至少满足 4 tasks × 2 conditions × repetitions；验证 hypotheses 首过，或只发生确定性 Claim→Evidence 修复，或发生一次有完整 diff 的 grounded revision；
++2. 在 alpha.5 新建同目标 Canary，先验证 evidence 的本地 source ABI 与独立 recovery quota，再继续验证 hypotheses 首过/确定性 Claim→Evidence 修复/grounded revision，以及 experiment-plan repair；
+ 3. 继续运行到 experiment-plan，验证 alpha.3 的计划修复能在真实模型上首过或只做无歧义修复，并稳定停在 `plan-approval`；
+ 4. 审阅 invalid/revision 留档、聚合错误、repair/revision provenance、上游不可变性、实验设计指纹和预算一致性，确认没有证据伪造或语义漂移，再进入 implementation；
+ 5. 在 trial 的三个边界注入真实故障：入口启动前、外部调用后但结果落盘前、checkpoint 落盘后，核对幂等键和费用账本；
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index dc4f23c..77d91bb 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,5 +1,14 @@
+ # Changelog
+ 
++## 0.4.0-alpha.5 — 2026-09-10
++
++- 根据真实 `fp-summation-canary-a4` 的 evidence 失败，明确项目内本地 Evidence source ABI：禁止 `file://` 作为正式 source URL；当来源就是该 query 的项目内 raw snapshot 时，使用 `local:<query.snapshot.path>`，缺失 persistent ID 时使用 `sha256:<query.snapshot.sha256>`。
++- Evidence repair 新增上述本地 source 的可证明等价规范化；Controller 仅在 file URI 精确指向该 retrieval query 已绑定、哈希有效的项目内 snapshot 时接受修复，外部 file URI、不同文件或无法证明身份的映射仍然阻断。
++- 将 primary phase attempts 与 bounded recovery attempts 分开计数，新增 `max_recovery_attempts_per_phase=1`；一次 `missing_phase_result` / timeout 等普通失败不再吞掉随后 semantic failure 应有的唯一 repair/revision 机会。
++- 状态与事件增加 `recovery_attempts` / `recovery_attempt`，阶段成功、审批或退回时与 primary attempts 一起重置；恢复失败仍保持严格上限并进入 blocked。
++- 新增“瞬时 missing phase result → 第二次 primary semantic failure → evidence repair 成功”的集成回归，以及本地 source 正向规范化和外部 file URI 负向边界测试。
++- 将 LocalExecutor timeout 单测从“首轮 sleep 1 秒 / 上限 0.15 秒”改为“首轮 sleep 3 秒 / 上限 1.5 秒”；仍然严格触发首轮 timeout，同时避免把解释器冷启动速度误当成执行器失败。
++
+ ## 0.4.0-alpha.4 — 2026-09-09
+ 
+ - 根据真实 `fp-summation-canary-a3` 的 hypotheses 引用失败，补全 Hypothesis Ledger Schema、最小合法模板与一次性聚合语义校验，明确 `evidence_ids` 只能引用 Evidence Record ID，禁止 Claim ID。
+diff --git a/MIGRATION.md b/MIGRATION.md
+index 4e62b6d..7797abf 100644
+--- a/MIGRATION.md
++++ b/MIGRATION.md
+@@ -1,5 +1,11 @@
+ # 版本迁移
+ 
++## 从 0.4 alpha.4 到 alpha.5
++
++保留 `fp-summation-canary-a4` 的 blocked 状态、invalid 留档和事件历史，不手改 `.research/state.json` 或 evidence ledger。alpha.5 改变了 Workflow/Schema 版本并新增独立 recovery quota，因此 alpha.4 项目不得原地续跑。
++
++在 alpha.5 创建全新同目标 Canary，只复制人工确认的 goal、constraints 与预算。重点验证：若 evidence 产生项目内 `file://` snapshot source，最多只允许一次可证明等价的 `local:<snapshot-path>` + `sha256:<snapshot-hash>` 结构修复；若先发生 `missing_phase_result` 等 primary failure，后续 semantic failure 仍应拥有一次独立 repair/revision 机会。最终仍必须停在 `plan-approval`，未经人工批准不得进入 implementation。
++
+ ## 从 0.4 alpha.3 到 alpha.4
+ 
+ 保留 `fp-summation-canary-a3` 的 blocked 状态与 invalid 留档，不人工补 `evidence_ids`，也不要把 alpha.3 的 `.research/`、hypothesis ledger 或 provenance 复制到 alpha.4。alpha.4 修改了所有 Schema 版本，并新增 hypotheses 的结构引用修复、grounded revision、revision diff 与失败分类，因此旧状态不能续跑。
+diff --git a/README.md b/README.md
+index 8373c50..f91673b 100644
+--- a/README.md
++++ b/README.md
+@@ -1,4 +1,4 @@
+-# OpenCode 科研模式 0.4.0-alpha.4
++# OpenCode 科研模式 0.4.0-alpha.5
+ 
+ 这是一个与“调研汇报模式”和“自主实现模式”分离的、目标驱动的计算科研工作流。OpenCode 负责模型与工具调用，Skills 提供阶段方法，`researchctl.py` 负责状态、审批、校验、恢复和安全边界。
+ 
+@@ -46,7 +46,9 @@ flowchart TD
+ - 所有科研 JSON 都带版本化 Schema；控制器为阶段产物生成独立 provenance sidecar。
+ - 每个检索查询必须保存参数、结果数量、原始快照路径及 SHA-256，claim、evidence 和 hypothesis 使用稳定 ID 连接。
+ - Evidence、hypotheses 或 experiment-plan 首次结构校验失败时，控制器会保存无效产物并在临时隔离工作区启动一次有界恢复；完整错误列表、精确 Schema 和阶段策略会反馈给专用 Agent。
++- Primary phase attempts 与 bounded recovery attempts 独立计数；默认每阶段最多 2 次 primary attempt + 1 次 repair/revision。前序 timeout、missing phase result 等失败不会吞掉随后 semantic failure 的唯一恢复机会。
+ - Evidence 修复只能处理已声明的字段/枚举映射和缺失响应记录；实验计划修复只能处理 `task_id→id` 等无歧义结构映射。Hypotheses 中可由账本确定推出的 Claim ID 会按 ledger 顺序映射为 Evidence Record ID，其他科学内容保持逐字不变。
++- Evidence 中若项目内 raw query snapshot 被模型写成 `file://...` 且 persistent ID 为空，只有 Controller 能证明它精确对应同一 query 的已绑定、哈希有效 snapshot 时，repair 才可规范化为 `local:<snapshot-path>` + `sha256:<snapshot-hash>`；外部或不匹配路径禁止映射。
+ - 空证据引用、未知引用或科学内容缺陷不会被结构修复器“补齐”。它们进入无网络、无 Skills 的 `research-reviser`：只能依据冻结的 Evidence Ledger 删除或重写尚未批准的假设，不能新增假设，并必须提交逐假设 revision diff；任何伪造 Evidence ID、上游篡改、漏报修改或越界写入都会阻断。
+ - 实验计划校验一次聚合全部结构问题，强制 `tasks × conditions × repetitions ≤ max_sessions`，且计划预算只能收紧、不能突破 research contract，防止产生审批后无法执行或擅自扩大的计划。
+ - 阶段失败事件和 invalid 留档记录 `timeout`、`process_exit`、`missing_phase_result`、`invalid_phase_result`、`semantic_validation`、`boundary_violation` 或 `provenance_failure`；`.research/phase-result.json` 只是可覆盖的控制器邮箱，禁止进入 provenance 图。
+@@ -177,4 +179,4 @@ research-mode/
+ 
+ 旧项目不能原地续跑新版本，因为状态、Schema 与 provenance 契约已经改变。保留旧项目作为审计记录，在新版本下创建项目，并只复制研究目标、人工约束和已验证事实。详见 `MIGRATION.md`。
+ 
+-v0.4.0-alpha.4 回应 alpha.3 真实 Canary 的 hypotheses 引用失败：补全 Hypothesis ABI 与聚合校验，区分确定性引用修复和受冻结证据约束的科学修订，并把失败类别与易变 phase-result 邮箱从长期 provenance 中分离。下一步在全新 Canary 中验证 hypotheses 能首过、确定性修复或有界修订，并继续触发 alpha.3 已实现的 experiment-plan repair，最终稳定停在 `plan-approval`；仍不开放远程执行。
++v0.4.0-alpha.5 回应 alpha.4 真实 Canary 在 evidence 阶段暴露的两个控制面问题：本地项目证据源 ABI 未明确，以及普通 phase attempt 与 bounded recovery 共用额度导致修复机会被前序瞬时失败耗尽。alpha.5 明确本地 source 的 `local:<snapshot-path>` + `sha256:<snapshot-hash>` 表示，并把 primary attempts 与 recovery attempts 分开计数；新的 Canary 仍必须从空项目开始，验证 evidence 恢复后继续到 hypotheses / experiment-plan 并稳定停在 `plan-approval`。仍不开放远程执行。
+diff --git a/RELEASE_NOTES-v0.4.0-alpha.5.md b/RELEASE_NOTES-v0.4.0-alpha.5.md
+new file mode 100644
+index 0000000..6a71056
+--- /dev/null
++++ b/RELEASE_NOTES-v0.4.0-alpha.5.md
+@@ -0,0 +1,27 @@
++# Research Mode v0.4.0-alpha.5
++
++发布日期：2026-09-10
++
++## 目标
++
++alpha.5 回应真实 `fp-summation-canary-a4` 在 evidence 阶段暴露的两个控制面问题：本地项目证据源的稳定身份表示未写死，以及 primary phase attempts 与 bounded recovery 共用额度，导致一次前序瞬时失败可能耗尽后续结构修复机会。
++
++## 主要变化
++
++- 本地 query snapshot 作为 Evidence source 时，正式 ABI 为 `source.url=local:<query.snapshot.path>`；若原始 persistent ID 缺失，则稳定身份为 `source.persistent_id=sha256:<query.snapshot.sha256>`。正式 ledger 不接受 `file://`。
++- Evidence repair 只在 Controller 能证明 file URI 精确指向该 retrieval query 已绑定且哈希有效的项目内 snapshot 时允许上述归一化；外部文件、不同本地文件或无法证明身份的映射一律阻断。
++- Workflow 新增 `max_recovery_attempts_per_phase=1`。`attempts` 只管理 primary phase 失败，`recovery_attempts` 单独管理 repair/revision 失败。即使 primary attempts 已达上限，只要最后一次失败是可恢复的 semantic validation，仍可使用尚未消耗的唯一 bounded recovery。
++- 事件记录补充 recovery attempt 号；阶段成功、审批或退回时两类计数同时归零。
++- 新增 alpha.4 真实失败形态的回归：第一次 evidence 缺失 phase result，第二次 evidence 产物违反本地 source ABI，随后一次 evidence repair 成功并继续到 `plan-approval`。
++
++## 安全边界
++
++alpha.5 没有扩大 repair 的科学权限：不允许新增来源、改变 claim/evidence 关系、修改 snapshot、把外部 file URI 伪装为本地证据，或猜测 persistent ID。恢复仍有严格次数上限。
++
++## 真实验证要求
++
++不要迁移 `fp-summation-canary-a4`。在 alpha.5 新建 `fp-summation-canary-a5`，使用同一研究目标和预算，运行到 `plan-approval` 为止。核对 framing/evidence/hypotheses/experiment-plan 的 primary 与 recovery 次数、本地 source 归一化、hypotheses structural repair/grounded revision、experiment-plan repair、provenance audit 和异常重试。未经人工批准不得进入 implementation。
++
++## 仍未实现
++
++仍只提供本地串行执行；不接入 SSH/Slurm，不安装新依赖，不改变两个审批门，也不与另外两个自动化模式混合。
+diff --git a/VERSION b/VERSION
+index 4a0a8fc..2dd43c6 100644
+--- a/VERSION
++++ b/VERSION
+@@ -1 +1 @@
+-0.4.0-alpha.4
++0.4.0-alpha.5
+diff --git a/researchctl.py b/researchctl.py
+index 32d3cc4..3b321d3 100755
+--- a/researchctl.py
++++ b/researchctl.py
+@@ -156,6 +156,7 @@ def load_state(project_dir: Path) -> dict:
+         "goal": None,
+         "constraints": None,
+         "attempts": {},
++        "recovery_attempts": {},
+         "approvals": {},
+         "execution_context": None,
+         "blocked_reason": None,
+@@ -183,6 +184,10 @@ def bump_attempt(state: dict, phase: str) -> int:
+     state.setdefault("attempts", {})[phase] = current
+     return current
+ 
++
++def bump_recovery_attempt(state: dict, phase: str) -> int:
++    current = int(state.setdefault("recovery_attempts", {}).get(phase, 0)) + 1
++    state["recovery_attempts"][phase] = current
++    return current
++
++
+ def acquire_lock(project_dir: Path, blocking: bool = True):
+     ensure_research_dir(project_dir)
+     lock_path = project_dir / ".research" / "lock"
