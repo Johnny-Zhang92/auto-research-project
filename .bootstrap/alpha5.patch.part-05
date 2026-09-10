@@ -1,0 +1,158 @@
+s":{"pass":1},"artifacts":[]})+"\\n")
+ """)
+     write("tasks/T1/task.txt", "frozen task\n")
+     trials = [
+@@ -256,7 +268,7 @@ Path(a.result).write_text(json.dumps({"schema_version":"0.4.0-alpha.4","executio
+         for i, (condition, task) in enumerate(((c, t) for c in ("A", "B") for t in range(1, 5)), 1)
+     ]
+     write_json(artifacts[1], {
+-        "schema_version": "0.4.0-alpha.4",
++        "schema_version": "0.4.0-alpha.5",
+         "execution_id": "EXEC-OFFLINE-001",
+         "executor": {"type": "local", "protocol_version": "1", "max_parallel": 1, "failure_policy": "continue"},
+         "entrypoint": ["python3", "scripts/execute-approved.py"],
+@@ -276,7 +288,7 @@ elif phase == "smoke-test":
+     artifacts = ["runs/smoke-test/report.md", "runs/smoke-test/result.json"]
+     write(artifacts[0], "# Smoke test\n")
+     write_json(artifacts[1], {
+-        "schema_version": "0.4.0-alpha.4",
++        "schema_version": "0.4.0-alpha.5",
+         "passed": True,
+         "checks": ["entrypoint", "grader", "budget"],
+         "measured_sessions_started": 0,
+@@ -287,9 +299,9 @@ elif phase == "formal-experiment":
+     artifacts = ["runs/formal-experiment/report.md", "runs/formal-experiment/result.json"]
+     write(artifacts[0], "# Formal experiment\n")
+     trial_ids = [f"trial-{i}" for i in range(1, 9)]
+-    write_json("runs/formal-experiment/executor-state.json", {"schema_version": "0.4.0-alpha.4", "execution_id": "EXEC-OFFLINE-001", "status": "completed", "trials": {trial_id: {"status": "completed"} for trial_id in trial_ids}})
++    write_json("runs/formal-experiment/executor-state.json", {"schema_version": "0.4.0-alpha.5", "execution_id": "EXEC-OFFLINE-001", "status": "completed", "trials": {trial_id: {"status": "completed"} for trial_id in trial_ids}})
+     write_json(artifacts[1], {
+-        "schema_version": "0.4.0-alpha.4",
++        "schema_version": "0.4.0-alpha.5",
+         "execution_id": "EXEC-OFFLINE-001",
+         "outcome": "completed",
+         "sessions_started": 8,
+@@ -307,7 +319,7 @@ elif phase == "analysis":
+     artifacts = ["research/result-analysis.md", "research/result-analysis.json"]
+     write(artifacts[0], "# Analysis\n")
+     write_json(artifacts[1], {
+-        "schema_version": "0.4.0-alpha.4",
++        "schema_version": "0.4.0-alpha.5",
+         "hypothesis_ids": ["H1"],
+         "primary_metric": "pass",
+         "effect_estimate": 0.1,
+@@ -323,7 +335,7 @@ elif phase == "decision":
+     artifacts = ["research/decision.md", "research/decision.json"]
+     write(artifacts[0], "# Decision\n")
+     write_json(artifacts[1], {
+-        "schema_version": "0.4.0-alpha.4",
++        "schema_version": "0.4.0-alpha.5",
+         "outcome": "INCONCLUSIVE",
+         "requested_next": "report",
+         "claim_ids": ["C1"],
+@@ -341,6 +353,14 @@ if invalid:
+ 
+ repair_blocked = repair and os.environ.get("FAKE_REPAIR_BLOCKED") == "1"
+ revision_blocked = revision and os.environ.get("FAKE_REVISION_BLOCKED") == "1"
++skip_once = os.environ.get("FAKE_SKIP_PHASE_RESULT_ONCE")
++if skip_once == phase and not repair and not revision:
++    marker_path = project / ".research" / f"fake-skip-once-{phase}.marker"
++    if not marker_path.exists():
++        marker_path.parent.mkdir(parents=True, exist_ok=True)
++        marker_path.write_text("1\n", encoding="utf-8")
++        print(json.dumps({"type": "fake", "phase": phase, "phase_result": "omitted-once"}))
++        raise SystemExit(0)
+ if os.environ.get("FAKE_SKIP_PHASE_RESULT") == phase:
+     print(json.dumps({"type": "fake", "phase": phase, "phase_result": "omitted"}))
+     raise SystemExit(0)
+diff --git a/tests/evidence_repair_test.sh b/tests/evidence_repair_test.sh
+index c36af2a..b8579c1 100755
+--- a/tests/evidence_repair_test.sh
++++ b/tests/evidence_repair_test.sh
+@@ -104,3 +104,43 @@ assert not (p/"scripts/injected.py").exists()
+ PY
+ 
+ echo "evidence repair test: PASS"
++
++unset FAKE_REPAIR_MUTATION
++unset FAKE_REPAIR_BLOCKED
++export FAKE_EVIDENCE_CASE=local-source-malformed
++python3 researchctl.py new local-source-repair-study --goal "normalize project-owned local evidence source"
++python3 researchctl.py run local-source-repair-study
++python3 - <<'PY'
++import json
++from pathlib import Path
++p=Path("projects/local-source-repair-study")
++s=json.load(open(p/".research/state.json"))
++assert s["phase"] == "plan-approval" and s["status"] == "waiting_approval"
++ledger=json.load(open(p/"research/evidence-ledger.json"))
++query=ledger["queries"][0]
++source=ledger["evidence"][0]["source"]
++assert source["url"] == f'local:{query["snapshot"]["path"]}'
++assert source["persistent_id"] == f'sha256:{query["snapshot"]["sha256"]}'
++events=(p/".research/events.jsonl").read_text()
++assert events.count('"event": "phase_repair_started"') == 1
++assert events.count('"event": "phase_repair_completed"') == 1
++PY
++
++export FAKE_EVIDENCE_CASE=local-source-external
++python3 researchctl.py new local-source-external-study --goal "reject external file source normalization"
++if python3 researchctl.py run local-source-external-study; then
++  echo "expected external local-source repair to block" >&2
++  exit 1
++fi
++python3 - <<'PY'
++import json
++from pathlib import Path
++p=Path("projects/local-source-external-study")
++s=json.load(open(p/".research/state.json"))
++assert s["phase"] == "blocked" and "repair changed scientific content" in s["blocker"]
++ledger=json.load(open(p/"research/evidence-ledger.json"))
++assert ledger["evidence"][0]["source"]["url"] == "file:///tmp/not-project-owned.json"
++assert ledger["evidence"][0]["source"]["persistent_id"] is None
++PY
++
++echo "local evidence source repair tests: PASS"
+diff --git a/tests/guarded_runner_test.sh b/tests/guarded_runner_test.sh
+index 51028b8..01d9757 100755
+--- a/tests/guarded_runner_test.sh
++++ b/tests/guarded_runner_test.sh
+@@ -22,24 +22,24 @@ s=json.load(open(a.trial_spec)); counts_path=Path("runs/formal-experiment/invoca
+ counts=json.load(open(counts_path)) if counts_path.exists() else {}
+ counts[s["trial_id"]]=counts.get(s["trial_id"],0)+1
+ counts_path.parent.mkdir(parents=True,exist_ok=True); counts_path.write_text(json.dumps(counts))
+-Path(a.result).write_text(json.dumps({"schema_version":"0.4.0-alpha.4","execution_id":s["execution_id"],"trial_id":s["trial_id"],"idempotency_key":s["idempotency_key"],"outcome":"completed","cost_usd":0.1,"wall_seconds":0.01,"metrics":{"pass":1},"artifacts":[]})+"\n")
++Path(a.result).write_text(json.dumps({"schema_version":"0.4.0-alpha.5","execution_id":s["execution_id"],"trial_id":s["trial_id"],"idempotency_key":s["idempotency_key"],"outcome":"completed","cost_usd":0.1,"wall_seconds":0.01,"metrics":{"pass":1},"artifacts":[]})+"\n")
+ ''')
+ (p / "tasks/T1").mkdir(parents=True, exist_ok=True)
+ (p / "tasks/T1/task.txt").write_text("task\n")
+ sha=lambda x: hashlib.sha256(x.read_bytes()).hexdigest()
+ budget={"max_cost_usd":1.0,"max_wall_seconds":30,"max_run_seconds":5,"max_retries":1,"max_sessions":4}
+ manifest={
+- "schema_version":"0.4.0-alpha.4","execution_id":"EXEC-GUARD-001",
++ "schema_version":"0.4.0-alpha.5","execution_id":"EXEC-GUARD-001",
+  "executor":{"type":"local","protocol_version":"1","max_parallel":1,"failure_policy":"continue"},
+  "entrypoint":["python3","scripts/execute-approved.py"],
+  "trials":[{"trial_id":"trial-a","condition":"A","task_id":"T1","seed":1,"parameters":{}},{"trial_id":"trial-b","condition":"B","task_id":"T1","seed":1,"parameters":{}}],
+  "estimated_sessions":2,"budget":budget,"frozen_inputs":["scripts","tasks"],
+  "environment":{"python":{"version":f"{sys.version_info.major}.{sys.version_info.minor}","executable":"python3"},"dependency_lock":{"path":None,"sha256":None,"reason":"stdlib-only"},"code_snapshot":[{"path":"scripts/execute-approved.py","sha256":sha(script)}],"data_artifacts":[{"path":"tasks/T1/task.txt","sha256":sha(p/'tasks/T1/task.txt')}],"pass_env":[]}}
+ manifest_path=p/"configs/execution-manifest.json"; manifest_path.write_text(json.dumps(manifest))
+-env={"schema_version":"0.4.0-alpha.4","execution_id":"EXEC-GUARD-001","captured_at":"2026-09-06T00:00:00Z","executor":manifest["executor"],"runtime":{"python_executable":sys.executable,"python_version":platform.python_version(),"python_implementation":platform.python_implementation(),"platform":platform.platform(),"machine":platform.machine()},"declared_python":manifest["environment"]["python"],"dependency_lock_reason":"stdlib-only","pass_env_names":[],"files":[{"role":"code","path":"scripts/execute-approved.py","sha256":sha(script)},{"role":"data","path":"tasks/T1/task.txt","sha256":sha(p/'tasks/T1/task.txt')}]}
++env={"schema_version":"0.4.0-alpha.5","execution_id":"EXEC-GUARD-001","captured_at":"2026-09-06T00:00:00Z","executor":manifest["executor"],"runtime":{"python_executable":sys.executable,"python_version":platform.python_version(),"python_implementation":platform.python_implementation(),"platform":platform.platform(),"machine":platform.machine()},"declared_python":manifest["environment"]["python"],"dependency_lock_reason":"stdlib-only","pass_env_names":[],"files":[{"role":"code","path":"scripts/execute-approved.py","sha256":sha(script)},{"role":"data","path":"tasks/T1/task.txt","sha256":sha(p/'tasks/T1/task.txt')}]}
+ env_lock=p/".research/environment-lock.json"; env_lock.write_text(json.dumps(env))
+ frozen_path=p/".research/frozen-manifest.json"; frozen_path.write_text(json.dumps({"files":{"scripts/execute-approved.py":sha(script),"configs/execution-manifest.json":sha(manifest_path)}}))
+-auth={"schema_version":"0.4.0-alpha.4","execution_id":"EXEC-GUARD-001","budget":budget,"execution_manifest_sha256":sha(manifest_path),"environment_lock_sha256":sha(env_lock),"frozen_manifest_sha256":sha(frozen_path)}
++auth={"schema_version":"0.4.0-alpha.5","execution_id":"EXEC-GUARD-001","budget":budget,"execution_manifest_sha256":sha(manifest_path),"environment_lock_sha256":sha(env_lock),"frozen_manifest_sha256":sha(frozen_path)}
+ (p/".research/execution-authorization.json").write_text(json.dumps(auth))
+ PY
+ 
+@@ -75,10 +75,10 @@ m=json.load(open(p/"configs/execution-manifest.json"))
+ m["execution_id"]="EXEC-COST-001"; m["trials"]=m["trials"][:1]; m["estimated_sessions"]=1
+ m["environment"]["code_snapshot"][0]["sha256"]=sha(script)
+ mp=p/"configs/execution-manifest.json"; mp.write_text(json.dumps(m))
+-env={"schema_version":"0.4.0-alpha.4","execution_id":"EXEC-COST-001","captured_at":"2026-09-06T00:00:00Z","executor":m["executor"],"runtime":{"python_executable":sys.executable,"python_version":platform.python_version(),"python_implementation":platform.python_implementation(),"platform":platform.platform(),"machine":platform.machine()},"declared_python":m["environment"]["python"],"dependency_lock_reason":"stdlib-only","pass_env_names":[],"files":[{"role":"code","path":"scripts/execute-approved.py","sha256":sha(script)},{"role":"data","path":"tasks/T1/task.txt","sha256":sha(p/'tasks/T1/task.txt')}]}
++env={"schema_version":"0.4.0-alpha.5","execution_id":"EXEC-COST-001","captured_at":"2026-09-06T00:00:00Z","executor":m["executor"],"runtime":{"python_executable":sys.executable,"python_version":platform.python_version(),"python_implementation":platform.python_implementation(),"platform":platform.platform(),"machine":platform.machine()},"declared_python":m["environment"]["python"],"dependency_lock_reason":"stdlib-only","pass_env_names":[],"files":[{"role":"code","path":"scripts/execute-approved.py","sha256":sha(script)},{"role":"data","path":"tasks/T1/task.txt","sha256":sha(p/'tasks/T1/task.txt')}]}
+ ep=p/".research/environment-lock.json"; ep.write_text(json.dumps(env))
+ fp=p/".research/frozen-manifest.json"; fp.write_text(json.dumps({"files":{"scripts/execute-approved.py":sha(script),"configs/execution-manifest.json":sha(mp)}}))
+-auth={"schema_version":"0.4.0-alpha.4","execution_id":"EXEC-COST-001","budget":m["budget"],"execution_manifest_sha256":sha(mp),"environment_lock_sha256":sha(ep),"frozen_manifest_sha256":sha(fp)}
++auth={"schema_version":"0.4.0-alpha.5","execution_id":"EXEC-COST-001","budg
